@@ -29,6 +29,11 @@ import (
 	"strings"
 	"time"
 
+	"strconv"
+	"sync"
+
+	"errors"
+
 	"google.golang.org/grpc/credentials/oauth"
 	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
@@ -42,6 +47,140 @@ import (
 	ecpb "google.golang.org/grpc/examples/features/proto/echo"
 )
 
+
+var (
+	// ErrLimitExhausted is returned by the Limiter in case the number of requests overflows the capacity of a Limiter.
+	ErrLimitExhausted = errors.New("requests limit exhausted")
+)
+
+// PriceTableState represents a state of a token bucket.
+type PriceTableState struct {
+	// Last is the last time the state was updated (Unix timestamp in nanoseconds).
+	Last int64
+	// Price is the number of available tokens in the bucket.
+	Price int64
+}
+
+// isZero returns true if the bucket state is zero valued.
+func (s PriceTableState) isZero() bool {
+	return s.Last == 0 && s.Price == 0
+}
+
+// PriceTableStateBackend interface encapsulates the logic of retrieving and persisting the state of a PriceTable.
+type PriceTableStateBackend interface {
+	// State gets the current state of the PriceTable.
+	State(ctx context.Context) (PriceTableState, error)
+	// SetState sets (persists) the current state of the PriceTable.
+	SetState(ctx context.Context, state PriceTableState) error
+}
+
+// PriceTable implements the https://en.wikipedia.org/wiki/Token_bucket algorithm.
+type PriceTable struct {
+	// locker  DistLocker
+	backend PriceTableStateBackend
+	// clock   Clock
+	// logger  Logger
+	// updateRate is the rate at which price should be updated at least once.
+	// updateRate time.Duration
+	// initprice is the bucket's initprice.
+	initprice int64
+	mu       sync.Mutex
+}
+
+// NewPriceTable creates a new instance of PriceTable.
+func NewPriceTable(initprice int64, priceTableStateBackend PriceTableStateBackend) *PriceTable {
+	return &PriceTable{
+		// locker:     locker,
+		backend:    priceTableStateBackend,
+		// clock:      clock,
+		// logger:     logger,
+		// updateRate: updateRate,
+		initprice:   initprice,
+	}
+}
+
+// Take takes tokens from the bucket.
+// It returns #token left and a nil error if the request has sufficient amount of tokens.
+// It returns ErrLimitExhausted if the amount of available tokens is less than requested.
+func (t *PriceTable) Take(ctx context.Context, tokens int64) (int64, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	// if err := t.locker.Lock(ctx); err != nil {
+	// 	return 0, err
+	// }
+	// defer func() {
+	// 	if err := t.locker.Unlock(); err != nil {
+	// 		t.logger.Log(err)
+	// 	}
+	// }()
+	state, err := t.backend.State(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if state.isZero() {
+		// Initially the bucket is full.
+		state.Price = t.initprice
+	}
+	// now := t.clock.Now().UnixNano()
+	// // Refill the bucket.
+	// tokensToAdd := (now - state.Last) / int64(t.updateRate)
+	// if tokensToAdd > 0 {
+	// 	state.Last = now
+	// 	// if tokensToAdd+state.Price <= t.initprice {
+	// 	// 	state.Price += tokensToAdd
+	// 	// } else {
+	// 	// 	state.Price = t.initprice
+	// 	// }
+	// }
+
+	if tokens < state.Price {
+		fmt.Printf("Request rejected for lack of tokens. Price is %d\n", state.Price)
+		return state.Price-tokens, ErrLimitExhausted
+	}
+
+	// Take the tokens from the req.
+	var tokenleft int64
+	tokenleft = tokens - state.Price
+
+	state.Price += 1
+	fmt.Printf("Price updated to %d\n", state.Price)
+
+	if err = t.backend.SetState(ctx, state); err != nil {
+		return 0, err
+	}
+	return tokenleft, nil
+}
+
+// Limit takes x token from the req.
+func (t *PriceTable) Limit(ctx context.Context, tokens int64) (int64, error) {
+	return t.Take(ctx, tokens)
+}
+
+
+// PriceTableInMemory is an in-memory implementation of PriceTableStateBackend.
+//
+// The state is not shared nor persisted so it won't survive restarts or failures.
+// Due to the local nature of the state the rate at which some endpoints are accessed can't be reliably predicted or
+// limited.
+type PriceTableInMemory struct {
+	state PriceTableState
+}
+
+// NewPriceTableInMemory creates a new instance of PriceTableInMemory.
+func NewPriceTableInMemory() *PriceTableInMemory {
+	return &PriceTableInMemory{}
+}
+
+// State returns the current bucket's state.
+func (t *PriceTableInMemory) State(ctx context.Context) (PriceTableState, error) {
+	return t.state, ctx.Err()
+}
+
+// SetState sets the current bucket's state.
+func (t *PriceTableInMemory) SetState(ctx context.Context, state PriceTableState) error {
+	t.state = state
+	return ctx.Err()
+}
 
 const fallbackToken = "some-secret-token"
 
@@ -151,7 +290,7 @@ func valid(authorization []string) bool {
 	return token == "some-secret-token"
 }
 
-func unaryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+func (priceTable *PriceTable) unaryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	// authentication (token verification)
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
@@ -164,8 +303,21 @@ func unaryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServ
 	logger("tokens are %s\n", md["tokens"])
 	// Jiali: overload handler, do AQM, deduct the tokens on the request, update price info
 
+	tok, err := strconv.ParseInt(md["tokens"][0], 10, 64)
+
+	tokenleft, err := priceTable.Limit(ctx, tok)
+	if err == ErrLimitExhausted {
+		return nil, status.Errorf(codes.ResourceExhausted, "try again later")
+	} else if err != nil {
+		// The limiter failed. This error should be logged and examined.
+		log.Println(err)
+		return nil, status.Error(codes.Internal, "internal error")
+	}
+
+	tok_string := strconv.FormatInt(tokenleft, 10)
 	// [critical] Jiali: Being outgoing seems to be critical for us.
-	ctx = metadata.NewOutgoingContext(ctx, md)
+	ctx = metadata.AppendToOutgoingContext(ctx, "tokens", tok_string)
+	// ctx = metadata.NewOutgoingContext(ctx, md)
 
 	m, err := handler(ctx, req)
 	// Attach the price info to response before sending
@@ -228,7 +380,12 @@ func main() {
 		log.Fatalf("failed to create credentials: %v", err)
 	}
 
-	s := grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(unaryInterceptor), grpc.StreamInterceptor(streamInterceptor))
+	const initialPrice = 2
+	priceTable := NewPriceTable(
+		initialPrice,
+		NewPriceTableInMemory(),
+	)
+	s := grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(priceTable.unaryInterceptor), grpc.StreamInterceptor(streamInterceptor))
 
 	// Register EchoServer on the server.
 	pb.RegisterEchoServer(s, &server{})
