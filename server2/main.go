@@ -53,15 +53,15 @@ var (
 	ErrLimitExhausted = errors.New("requests limit exhausted")
 )
 
-// PriceTableState represents a state of a token bucket.
+// PriceTableState represents a state of a price table.
 type PriceTableState struct {
 	// Last is the last time the state was updated (Unix timestamp in nanoseconds).
 	Last int64
-	// Price is the number of available tokens in the bucket.
+	// Price is the number of available tokens in the price table.
 	Price int64
 }
 
-// isZero returns true if the bucket state is zero valued.
+// isZero returns true if the price table state is zero valued.
 func (s PriceTableState) isZero() bool {
 	return s.Last == 0 && s.Price == 0
 }
@@ -74,7 +74,7 @@ type PriceTableStateBackend interface {
 	SetState(ctx context.Context, state PriceTableState) error
 }
 
-// PriceTable implements the https://en.wikipedia.org/wiki/Token_bucket algorithm.
+// PriceTable implements the Charon price table
 type PriceTable struct {
 	// locker  DistLocker
 	backend PriceTableStateBackend
@@ -82,7 +82,7 @@ type PriceTable struct {
 	// logger  Logger
 	// updateRate is the rate at which price should be updated at least once.
 	// updateRate time.Duration
-	// initprice is the bucket's initprice.
+	// initprice is the price table's initprice.
 	initprice int64
 	mu       sync.Mutex
 }
@@ -99,7 +99,7 @@ func NewPriceTable(initprice int64, priceTableStateBackend PriceTableStateBacken
 	}
 }
 
-// Take takes tokens from the bucket.
+// Take takes tokens from the price table.
 // It returns #token left and a nil error if the request has sufficient amount of tokens.
 // It returns ErrLimitExhausted if the amount of available tokens is less than requested.
 func (t *PriceTable) Take(ctx context.Context, tokens int64) (int64, error) {
@@ -118,11 +118,11 @@ func (t *PriceTable) Take(ctx context.Context, tokens int64) (int64, error) {
 		return 0, err
 	}
 	if state.isZero() {
-		// Initially the bucket is full.
+		// Initially the price table is initprice.
 		state.Price = t.initprice
 	}
 	// now := t.clock.Now().UnixNano()
-	// // Refill the bucket.
+	// // Refill the price table.
 	// tokensToAdd := (now - state.Last) / int64(t.updateRate)
 	// if tokensToAdd > 0 {
 	// 	state.Last = now
@@ -171,12 +171,12 @@ func NewPriceTableInMemory() *PriceTableInMemory {
 	return &PriceTableInMemory{}
 }
 
-// State returns the current bucket's state.
+// State returns the current price table's state.
 func (t *PriceTableInMemory) State(ctx context.Context) (PriceTableState, error) {
 	return t.state, ctx.Err()
 }
 
-// SetState sets the current bucket's state.
+// SetState sets the current price table's state.
 func (t *PriceTableInMemory) SetState(ctx context.Context, state PriceTableState) error {
 	t.state = state
 	return ctx.Err()
