@@ -34,19 +34,18 @@ import (
 
 	"errors"
 
-	"google.golang.org/grpc/credentials/oauth"
 	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/oauth"
 	"google.golang.org/grpc/examples/data"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	pb "google.golang.org/grpc/examples/features/proto/echo"
 	ecpb "google.golang.org/grpc/examples/features/proto/echo"
+	pb "google.golang.org/grpc/examples/features/proto/echo"
 )
-
 
 var (
 	// ErrLimitExhausted is returned by the Limiter in case the number of requests overflows the capacity of a Limiter.
@@ -84,18 +83,18 @@ type PriceTable struct {
 	// updateRate time.Duration
 	// initprice is the price table's initprice.
 	initprice int64
-	mu       sync.Mutex
+	mu        sync.Mutex
 }
 
 // NewPriceTable creates a new instance of PriceTable.
 func NewPriceTable(initprice int64, priceTableStateBackend PriceTableStateBackend) *PriceTable {
 	return &PriceTable{
 		// locker:     locker,
-		backend:    priceTableStateBackend,
+		backend: priceTableStateBackend,
 		// clock:      clock,
 		// logger:     logger,
 		// updateRate: updateRate,
-		initprice:   initprice,
+		initprice: initprice,
 	}
 }
 
@@ -135,7 +134,7 @@ func (t *PriceTable) Take(ctx context.Context, tokens int64) (int64, error) {
 
 	if tokens < state.Price {
 		fmt.Printf("Request rejected for lack of tokens. Price is %d\n", state.Price)
-		return state.Price-tokens, ErrLimitExhausted
+		return state.Price - tokens, ErrLimitExhausted
 	}
 
 	// Take the tokens from the req.
@@ -155,7 +154,6 @@ func (t *PriceTable) Take(ctx context.Context, tokens int64) (int64, error) {
 func (t *PriceTable) Limit(ctx context.Context, tokens int64) (int64, error) {
 	return t.Take(ctx, tokens)
 }
-
 
 // PriceTableInMemory is an in-memory implementation of PriceTableStateBackend.
 //
@@ -185,16 +183,14 @@ func (t *PriceTableInMemory) SetState(ctx context.Context, state PriceTableState
 const fallbackToken = "some-secret-token"
 
 func callUnaryEcho(ctx context.Context, client ecpb.EchoClient, message string) {
-	// ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	// defer cancel()
 	// [critical] to pass ctx to subrequests.
 	resp, err := client.UnaryEcho(ctx, &ecpb.EchoRequest{Message: message})
+	// The function UnaryEcho above is the RPC stub provided by downstream nodes (server/main.go) to this service to call.
 	if err != nil {
 		log.Fatalf("client.UnaryEcho(_) = _, %v: ", err)
 	}
 	fmt.Println("UnaryEcho: ", resp.Message)
 }
-
 
 // unaryInterceptor is an example unary interceptor.
 func unaryInterceptor_client(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
@@ -222,7 +218,6 @@ func unaryInterceptor_client(ctx context.Context, method string, req, reply inte
 	return err
 }
 
-
 var addr = flag.String("addr", "localhost:50052", "the address to connect to")
 
 var (
@@ -242,7 +237,7 @@ type server struct {
 }
 
 func (s *server) UnaryEcho(ctx context.Context, in *pb.EchoRequest) (*pb.EchoResponse, error) {
-	//client stuff
+	// This function is the server-side stub provided by this service to upstream nodes/clients.
 	creds_client, err_client := credentials.NewClientTLSFromFile(data.Path("x509/ca_cert.pem"), "x.test.example.com")
 	if err_client != nil {
 		log.Fatalf("failed to load credentials: %v", err_client)
@@ -259,6 +254,7 @@ func (s *server) UnaryEcho(ctx context.Context, in *pb.EchoRequest) (*pb.EchoRes
 	rgc := ecpb.NewEchoClient(conn)
 	fmt.Printf("unary echoing message at server 2 %q\n", in.Message)
 	// [critical] to pass ctx from upstream to downstream
+	// This function is called when the middle tier service behave as a client and dials the downstream nodes.
 	callUnaryEcho(ctx, rgc, in.Message)
 	return &pb.EchoResponse{Message: in.Message}, nil
 }
@@ -328,7 +324,6 @@ func (priceTable *PriceTable) unaryInterceptor(ctx context.Context, req interfac
 	return m, err
 }
 
-
 // wrappedStream wraps around the embedded grpc.ServerStream, and intercepts the RecvMsg and
 // SendMsg method call.
 type wrappedStream struct {
@@ -393,7 +388,5 @@ func main() {
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}
-
-
 
 }
