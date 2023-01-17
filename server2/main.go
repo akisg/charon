@@ -234,30 +234,31 @@ func logger(format string, a ...interface{}) {
 
 type server struct {
 	pb.UnimplementedEchoServer
-	// This line below is the downstream server
+	// This line below is the downstream server (an echo client) of the server.
 	rgc ecpb.EchoClient
 }
 
-func newServer(priceTable *PriceTable) *server {
-	creds_client, err_client := credentials.NewClientTLSFromFile(data.Path("x509/ca_cert.pem"), "x.test.example.com")
-	if err_client != nil {
-		log.Fatalf("failed to load credentials: %v", err_client)
-	}
+// func newServer(priceTable *PriceTable) *server {
+// 	// This function creates a new server with a given pricetable, which is used later for the client interceptor
+// 	creds_client, err_client := credentials.NewClientTLSFromFile(data.Path("x509/ca_cert.pem"), "x.test.example.com")
+// 	if err_client != nil {
+// 		log.Fatalf("failed to load credentials: %v", err_client)
+// 	}
 
-	// Set up a connection to the downstream server.
-	conn, err := grpc.Dial(*addr, grpc.WithTransportCredentials(creds_client),
-		grpc.WithUnaryInterceptor(priceTable.unaryInterceptor_client))
-	if err != nil {
-		log.Fatalf("did not connect: %v", err)
-	}
-	// defer conn.Close()
+// 	// Set up a connection to the downstream server.
+// 	conn, err := grpc.Dial(*addr, grpc.WithTransportCredentials(creds_client),
+// 		grpc.WithUnaryInterceptor(priceTable.unaryInterceptor_client))
+// 	if err != nil {
+// 		log.Fatalf("did not connect: %v", err)
+// 	}
+// 	// defer conn.Close()
 
-	// Make a echo client and send RPCs.
-	// rgc := ecpb.NewEchoClient(conn)
+// 	// Make a echo client and send RPCs.
+// 	// rgc := ecpb.NewEchoClient(conn)
 
-	s := &server{rgc: ecpb.NewEchoClient(conn)}
-	return s
-}
+// 	s := &server{rgc: ecpb.NewEchoClient(conn)}
+// 	return s
+// }
 
 func (s *server) UnaryEcho(ctx context.Context, in *pb.EchoRequest) (*pb.EchoResponse, error) {
 	// This function is the server-side stub provided by this service to upstream nodes/clients.
@@ -391,9 +392,21 @@ func main() {
 	)
 	s := grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(priceTable.unaryInterceptor), grpc.StreamInterceptor(streamInterceptor))
 
+	creds_client, err_client := credentials.NewClientTLSFromFile(data.Path("x509/ca_cert.pem"), "x.test.example.com")
+	if err_client != nil {
+		log.Fatalf("failed to load credentials: %v", err_client)
+	}
+
+	// Set up a connection to the downstream server, but with the client-side interceptor on top of priceTable.
+	conn, err := grpc.Dial(*addr, grpc.WithTransportCredentials(creds_client),
+		grpc.WithUnaryInterceptor(priceTable.unaryInterceptor_client))
+	if err != nil {
+		log.Fatalf("did not connect: %v", err)
+	}
+
+	// Make a echo client rgc and send RPCs.
 	// Register EchoServer on the server.
-	// pb.RegisterEchoServer(s, &server{})
-	pb.RegisterEchoServer(s, newServer(priceTable))
+	pb.RegisterEchoServer(s, &server{rgc: ecpb.NewEchoClient(conn)})
 
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
