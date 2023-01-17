@@ -193,7 +193,7 @@ func callUnaryEcho(ctx context.Context, client ecpb.EchoClient, message string) 
 }
 
 // unaryInterceptor is an example unary interceptor.
-func unaryInterceptor_client(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+func (priceTable *PriceTable) unaryInterceptor_client(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	var credsConfigured bool
 	for _, o := range opts {
 		_, ok := o.(grpc.PerRPCCredsCallOption)
@@ -234,28 +234,37 @@ func logger(format string, a ...interface{}) {
 
 type server struct {
 	pb.UnimplementedEchoServer
+	// This line below is the downstream server
+	rgc ecpb.EchoClient
 }
 
-func (s *server) UnaryEcho(ctx context.Context, in *pb.EchoRequest) (*pb.EchoResponse, error) {
-	// This function is the server-side stub provided by this service to upstream nodes/clients.
+func newServer(priceTable *PriceTable) *server {
 	creds_client, err_client := credentials.NewClientTLSFromFile(data.Path("x509/ca_cert.pem"), "x.test.example.com")
 	if err_client != nil {
 		log.Fatalf("failed to load credentials: %v", err_client)
 	}
 
-	// Set up a connection to the server.
-	conn, err := grpc.Dial(*addr, grpc.WithTransportCredentials(creds_client), grpc.WithUnaryInterceptor(unaryInterceptor_client))
+	// Set up a connection to the downstream server.
+	conn, err := grpc.Dial(*addr, grpc.WithTransportCredentials(creds_client),
+		grpc.WithUnaryInterceptor(priceTable.unaryInterceptor_client))
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}
-	defer conn.Close()
+	// defer conn.Close()
 
 	// Make a echo client and send RPCs.
-	rgc := ecpb.NewEchoClient(conn)
+	// rgc := ecpb.NewEchoClient(conn)
+
+	s := &server{rgc: ecpb.NewEchoClient(conn)}
+	return s
+}
+
+func (s *server) UnaryEcho(ctx context.Context, in *pb.EchoRequest) (*pb.EchoResponse, error) {
+	// This function is the server-side stub provided by this service to upstream nodes/clients.
 	fmt.Printf("unary echoing message at server 2 %q\n", in.Message)
 	// [critical] to pass ctx from upstream to downstream
 	// This function is called when the middle tier service behave as a client and dials the downstream nodes.
-	callUnaryEcho(ctx, rgc, in.Message)
+	callUnaryEcho(ctx, s.rgc, in.Message)
 	return &pb.EchoResponse{Message: in.Message}, nil
 }
 
@@ -383,7 +392,8 @@ func main() {
 	s := grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(priceTable.unaryInterceptor), grpc.StreamInterceptor(streamInterceptor))
 
 	// Register EchoServer on the server.
-	pb.RegisterEchoServer(s, &server{})
+	// pb.RegisterEchoServer(s, &server{})
+	pb.RegisterEchoServer(s, newServer(priceTable))
 
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
