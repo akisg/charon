@@ -134,6 +134,11 @@ func (t *PriceTable) Take(ctx context.Context, tokens int64) (int64, error) {
 
 	if tokens < state.Price {
 		fmt.Printf("Request rejected for lack of tokens. Price is %d\n", state.Price)
+		state.Price -= 1
+
+		if err = t.backend.SetState(ctx, state); err != nil {
+			return 0, err
+		}
 		return state.Price - tokens, ErrLimitExhausted
 	}
 
@@ -193,7 +198,7 @@ func callUnaryEcho(ctx context.Context, client ecpb.EchoClient, message string) 
 }
 
 // unaryInterceptor is an example unary interceptor.
-func unaryInterceptor_client(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+func (priceTable *PriceTable) unaryInterceptor_client(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	var credsConfigured bool
 	for _, o := range opts {
 		_, ok := o.(grpc.PerRPCCredsCallOption)
@@ -210,8 +215,10 @@ func unaryInterceptor_client(ctx context.Context, method string, req, reply inte
 	// start := time.Now()
 
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
-	err := invoker(ctx, method, req, reply, cc, opts...)
+	var header metadata.MD // variable to store header and trailer
+	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
 	// Jiali: after replied. update and store the price info for future
+	fmt.Println("Price from downstream: ", header["price"])
 
 	// end := time.Now()
 	// logger("RPC: %s, start time: %s, end time: %s, err: %v", method, start.Format("Basic"), end.Format(time.RFC3339), err)
@@ -224,7 +231,6 @@ var (
 	port = flag.Int("port", 50051, "the port to serve on")
 
 	errMissingMetadata = status.Errorf(codes.InvalidArgument, "missing metadata")
-	errInvalidToken    = status.Errorf(codes.Unauthenticated, "invalid token")
 )
 
 // logger is to mock a sophisticated logging system. To simplify the example, we just print out the content.
@@ -234,28 +240,38 @@ func logger(format string, a ...interface{}) {
 
 type server struct {
 	pb.UnimplementedEchoServer
+	// This line below is the downstream server (an echo client) of the server.
+	rgc ecpb.EchoClient
 }
+
+// func newServer(priceTable *PriceTable) *server {
+// 	// This function creates a new server with a given pricetable, which is used later for the client interceptor
+// 	creds_client, err_client := credentials.NewClientTLSFromFile(data.Path("x509/ca_cert.pem"), "x.test.example.com")
+// 	if err_client != nil {
+// 		log.Fatalf("failed to load credentials: %v", err_client)
+// 	}
+
+// 	// Set up a connection to the downstream server.
+// 	conn, err := grpc.Dial(*addr, grpc.WithTransportCredentials(creds_client),
+// 		grpc.WithUnaryInterceptor(priceTable.unaryInterceptor_client))
+// 	if err != nil {
+// 		log.Fatalf("did not connect: %v", err)
+// 	}
+// 	// defer conn.Close()
+
+// 	// Make a echo client and send RPCs.
+// 	// rgc := ecpb.NewEchoClient(conn)
+
+// 	s := &server{rgc: ecpb.NewEchoClient(conn)}
+// 	return s
+// }
 
 func (s *server) UnaryEcho(ctx context.Context, in *pb.EchoRequest) (*pb.EchoResponse, error) {
 	// This function is the server-side stub provided by this service to upstream nodes/clients.
-	creds_client, err_client := credentials.NewClientTLSFromFile(data.Path("x509/ca_cert.pem"), "x.test.example.com")
-	if err_client != nil {
-		log.Fatalf("failed to load credentials: %v", err_client)
-	}
-
-	// Set up a connection to the server.
-	conn, err := grpc.Dial(*addr, grpc.WithTransportCredentials(creds_client), grpc.WithUnaryInterceptor(unaryInterceptor_client))
-	if err != nil {
-		log.Fatalf("did not connect: %v", err)
-	}
-	defer conn.Close()
-
-	// Make a echo client and send RPCs.
-	rgc := ecpb.NewEchoClient(conn)
 	fmt.Printf("unary echoing message at server 2 %q\n", in.Message)
 	// [critical] to pass ctx from upstream to downstream
 	// This function is called when the middle tier service behave as a client and dials the downstream nodes.
-	callUnaryEcho(ctx, rgc, in.Message)
+	callUnaryEcho(ctx, s.rgc, in.Message)
 	return &pb.EchoResponse{Message: in.Message}, nil
 }
 
@@ -291,9 +307,6 @@ func (priceTable *PriceTable) unaryInterceptor(ctx context.Context, req interfac
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		return nil, errMissingMetadata
-	}
-	if !valid(md["authorization"]) {
-		return nil, errInvalidToken
 	}
 
 	logger("tokens are %s\n", md["tokens"])
@@ -346,12 +359,9 @@ func newWrappedStream(s grpc.ServerStream) grpc.ServerStream {
 
 func streamInterceptor(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 	// authentication (token verification)
-	md, ok := metadata.FromIncomingContext(ss.Context())
+	_, ok := metadata.FromIncomingContext(ss.Context())
 	if !ok {
 		return errMissingMetadata
-	}
-	if !valid(md["authorization"]) {
-		return errInvalidToken
 	}
 
 	err := handler(srv, newWrappedStream(ss))
@@ -382,8 +392,21 @@ func main() {
 	)
 	s := grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(priceTable.unaryInterceptor), grpc.StreamInterceptor(streamInterceptor))
 
+	creds_client, err_client := credentials.NewClientTLSFromFile(data.Path("x509/ca_cert.pem"), "x.test.example.com")
+	if err_client != nil {
+		log.Fatalf("failed to load credentials: %v", err_client)
+	}
+
+	// Set up a connection to the downstream server, but with the client-side interceptor on top of priceTable.
+	conn, err := grpc.Dial(*addr, grpc.WithTransportCredentials(creds_client),
+		grpc.WithUnaryInterceptor(priceTable.unaryInterceptor_client))
+	if err != nil {
+		log.Fatalf("did not connect: %v", err)
+	}
+
+	// Make a echo client rgc and send RPCs.
 	// Register EchoServer on the server.
-	pb.RegisterEchoServer(s, &server{})
+	pb.RegisterEchoServer(s, &server{rgc: ecpb.NewEchoClient(conn)})
 
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)

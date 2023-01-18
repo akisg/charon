@@ -26,6 +26,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 
@@ -43,7 +44,6 @@ var (
 	port = flag.Int("port", 50052, "the port to serve on")
 
 	errMissingMetadata = status.Errorf(codes.InvalidArgument, "missing metadata")
-	errInvalidToken    = status.Errorf(codes.Unauthenticated, "invalid token")
 )
 
 // logger is to mock a sophisticated logging system. To simplify the example, we just print out the content.
@@ -93,14 +93,19 @@ func unaryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServ
 	if !ok {
 		return nil, errMissingMetadata
 	}
-	if !valid(md["authorization"]) {
-		return nil, errInvalidToken
-	}
 
 	logger("tokens are %s\n", md["tokens"])
 	// Jiali: overload handler, do AQM, deduct the tokens on the request, update price info
-	m, err := handler(ctx, req)
+
 	// Attach the price info to response before sending
+	tok, err := strconv.ParseInt(md["tokens"][0], 10, 64)
+	// right now let's just have price as half of the token.
+	price_string := strconv.FormatInt(tok, 10)
+	// [critical] Jiali: Being outgoing seems to be critical for us.
+	header := metadata.Pairs("price", price_string)
+	grpc.SendHeader(ctx, header)
+
+	m, err := handler(ctx, req)
 
 	if err != nil {
 		logger("RPC failed with error %v", err)
@@ -130,12 +135,9 @@ func newWrappedStream(s grpc.ServerStream) grpc.ServerStream {
 
 func streamInterceptor(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 	// authentication (token verification)
-	md, ok := metadata.FromIncomingContext(ss.Context())
+	_, ok := metadata.FromIncomingContext(ss.Context())
 	if !ok {
 		return errMissingMetadata
-	}
-	if !valid(md["authorization"]) {
-		return errInvalidToken
 	}
 
 	err := handler(srv, newWrappedStream(ss))
