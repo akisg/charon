@@ -54,15 +54,17 @@ var (
 
 // PriceTableState represents a state of a price table.
 type PriceTableState struct {
-	// Last is the last time the state was updated (Unix timestamp in nanoseconds).
-	Last int64
-	// Price is the number of available tokens in the price table.
-	Price int64
+	// Init is True if it the price table has been initiated.
+	Init bool
+	// ownPrice is the number of price in its own price table.
+	ownPrice int64
+	// ownPrice is the number of price of the downstream service's price table.
+	downstreamPrice int64
 }
 
 // isZero returns true if the price table state is zero valued.
 func (s PriceTableState) isZero() bool {
-	return s.Last == 0 && s.Price == 0
+	return s.Init && s.ownPrice == 0
 }
 
 // PriceTableStateBackend interface encapsulates the logic of retrieving and persisting the state of a PriceTable.
@@ -98,10 +100,11 @@ func NewPriceTable(initprice int64, priceTableStateBackend PriceTableStateBacken
 	}
 }
 
-// Take takes tokens from the price table.
+// Limit takes tokens from the request according to the price table,
+// then it updates the price table according to the tokens on the req.
 // It returns #token left and a nil error if the request has sufficient amount of tokens.
 // It returns ErrLimitExhausted if the amount of available tokens is less than requested.
-func (t *PriceTable) Take(ctx context.Context, tokens int64) (int64, error) {
+func (t *PriceTable) Limit(ctx context.Context, tokens int64) (int64, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	// if err := t.locker.Lock(ctx); err != nil {
@@ -118,36 +121,39 @@ func (t *PriceTable) Take(ctx context.Context, tokens int64) (int64, error) {
 	}
 	if state.isZero() {
 		// Initially the price table is initprice.
-		state.Price = t.initprice
+		state.ownPrice = t.initprice
+		state.Init = true
 	}
 	// now := t.clock.Now().UnixNano()
 	// // Refill the price table.
 	// tokensToAdd := (now - state.Last) / int64(t.updateRate)
 	// if tokensToAdd > 0 {
 	// 	state.Last = now
-	// 	// if tokensToAdd+state.Price <= t.initprice {
-	// 	// 	state.Price += tokensToAdd
+	// 	// if tokensToAdd+state.ownPrice <= t.initprice {
+	// 	// 	state.ownPrice += tokensToAdd
 	// 	// } else {
-	// 	// 	state.Price = t.initprice
+	// 	// 	state.ownPrice = t.initprice
 	// 	// }
 	// }
 
-	if tokens < state.Price {
-		fmt.Printf("Request rejected for lack of tokens. Price is %d\n", state.Price)
-		state.Price -= 1
+	if tokens < state.ownPrice+state.downstreamPrice {
+		fmt.Printf("Request rejected for lack of tokens. ownPrice is %d downstream price is %d\n", state.ownPrice, state.downstreamPrice)
+		if state.ownPrice > 0 {
+			state.ownPrice -= 1
+		}
 
 		if err = t.backend.SetState(ctx, state); err != nil {
 			return 0, err
 		}
-		return state.Price - tokens, ErrLimitExhausted
+		return state.ownPrice + state.downstreamPrice - tokens, ErrLimitExhausted
 	}
 
 	// Take the tokens from the req.
 	var tokenleft int64
-	tokenleft = tokens - state.Price
+	tokenleft = tokens - state.ownPrice - state.downstreamPrice
 
-	state.Price += 1
-	fmt.Printf("Price updated to %d\n", state.Price)
+	state.ownPrice += 1
+	fmt.Printf("Own price updated to %d\n", state.ownPrice)
 
 	if err = t.backend.SetState(ctx, state); err != nil {
 		return 0, err
@@ -155,9 +161,32 @@ func (t *PriceTable) Take(ctx context.Context, tokens int64) (int64, error) {
 	return tokenleft, nil
 }
 
-// Limit takes x token from the req.
-func (t *PriceTable) Limit(ctx context.Context, tokens int64) (int64, error) {
-	return t.Take(ctx, tokens)
+// // Limit takes x token from the req.
+// func (t *PriceTable) Limit(ctx context.Context, tokens int64) (int64, error) {
+// 	return t.Take(ctx, tokens)
+// }
+
+// Include incorperates (add to own price, so far) the downstream price table to its own price table.
+func (t *PriceTable) Include(ctx context.Context, downstreamPrice int64) (int64, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	state, err := t.backend.State(ctx)
+	if err != nil {
+		return 0, err
+	}
+	// if state.isZero() {
+	// 	// Initially the price table is initprice.
+	// 	state.ownPrice = t.initprice
+	// }
+
+	// Update the downstream price.
+	state.downstreamPrice = downstreamPrice
+	fmt.Printf("Downstream price updated to %d\n", state.downstreamPrice)
+
+	if err = t.backend.SetState(ctx, state); err != nil {
+		return 0, err
+	}
+	return state.ownPrice + state.downstreamPrice, nil
 }
 
 // PriceTableInMemory is an in-memory implementation of PriceTableStateBackend.
@@ -217,9 +246,12 @@ func (priceTable *PriceTable) unaryInterceptor_client(ctx context.Context, metho
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
 	var header metadata.MD // variable to store header and trailer
 	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
+	// err := invoker(ctx, method, req, reply, cc, opts...)
 	// Jiali: after replied. update and store the price info for future
-	fmt.Println("Price from downstream: ", header["price"])
-
+	// fmt.Println("Price from downstream: ", header["price"])
+	priceDownstream, err := strconv.ParseInt(header["price"][0], 10, 64)
+	totalPrice, err := priceTable.Include(ctx, priceDownstream)
+	fmt.Println("Total price updated to: ", totalPrice)
 	// end := time.Now()
 	// logger("RPC: %s, start time: %s, end time: %s, err: %v", method, start.Format("Basic"), end.Format(time.RFC3339), err)
 	return err
