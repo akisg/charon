@@ -134,6 +134,11 @@ func (t *PriceTable) Take(ctx context.Context, tokens int64) (int64, error) {
 
 	if tokens < state.Price {
 		fmt.Printf("Request rejected for lack of tokens. Price is %d\n", state.Price)
+		state.Price -= 1
+
+		if err = t.backend.SetState(ctx, state); err != nil {
+			return 0, err
+		}
 		return state.Price - tokens, ErrLimitExhausted
 	}
 
@@ -210,8 +215,10 @@ func (priceTable *PriceTable) unaryInterceptor_client(ctx context.Context, metho
 	// start := time.Now()
 
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
-	err := invoker(ctx, method, req, reply, cc, opts...)
+	var header metadata.MD // variable to store header and trailer
+	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
 	// Jiali: after replied. update and store the price info for future
+	fmt.Println("Price from downstream: ", header["price"])
 
 	// end := time.Now()
 	// logger("RPC: %s, start time: %s, end time: %s, err: %v", method, start.Format("Basic"), end.Format(time.RFC3339), err)
@@ -224,7 +231,6 @@ var (
 	port = flag.Int("port", 50051, "the port to serve on")
 
 	errMissingMetadata = status.Errorf(codes.InvalidArgument, "missing metadata")
-	errInvalidToken    = status.Errorf(codes.Unauthenticated, "invalid token")
 )
 
 // logger is to mock a sophisticated logging system. To simplify the example, we just print out the content.
@@ -302,9 +308,6 @@ func (priceTable *PriceTable) unaryInterceptor(ctx context.Context, req interfac
 	if !ok {
 		return nil, errMissingMetadata
 	}
-	if !valid(md["authorization"]) {
-		return nil, errInvalidToken
-	}
 
 	logger("tokens are %s\n", md["tokens"])
 	// Jiali: overload handler, do AQM, deduct the tokens on the request, update price info
@@ -356,12 +359,9 @@ func newWrappedStream(s grpc.ServerStream) grpc.ServerStream {
 
 func streamInterceptor(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 	// authentication (token verification)
-	md, ok := metadata.FromIncomingContext(ss.Context())
+	_, ok := metadata.FromIncomingContext(ss.Context())
 	if !ok {
 		return errMissingMetadata
-	}
-	if !valid(md["authorization"]) {
-		return errInvalidToken
 	}
 
 	err := handler(srv, newWrappedStream(ss))
