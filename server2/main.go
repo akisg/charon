@@ -20,8 +20,8 @@
 package main
 
 import (
+	"charon/charon"
 	"context"
-	"examples/interceptor"
 	"flag"
 	"fmt"
 	"io"
@@ -186,9 +186,9 @@ func main() {
 	}
 
 	const initialPrice = 2
-	priceTable := interceptor.NewPriceTable(
+	priceTable := charon.NewPriceTable(
 		initialPrice,
-		interceptor.NewPriceTableInMemory(),
+		charon.NewPriceTableInMemory(),
 	)
 	s := grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(priceTable.UnaryInterceptor), grpc.StreamInterceptor(streamInterceptor))
 
