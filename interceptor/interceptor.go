@@ -194,7 +194,7 @@ func (t *PriceTableInMemory) SetState(ctx context.Context, state PriceTableState
 const fallbackToken = "some-secret-token"
 
 // unaryInterceptor is an example unary interceptor.
-func (PriceTable1 *PriceTable) UnaryInterceptorClient(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+func (PriceTableInstance *PriceTable) UnaryInterceptorClient(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	var credsConfigured bool
 	for _, o := range opts {
 		_, ok := o.(grpc.PerRPCCredsCallOption)
@@ -214,10 +214,11 @@ func (PriceTable1 *PriceTable) UnaryInterceptorClient(ctx context.Context, metho
 	var header metadata.MD // variable to store header and trailer
 	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
 	// err := invoker(ctx, method, req, reply, cc, opts...)
+	// log.Println(err)
 	// Jiali: after replied. update and store the price info for future
 	// fmt.Println("Price from downstream: ", header["price"])
 	priceDownstream, err := strconv.ParseInt(header["price"][0], 10, 64)
-	totalPrice, err := PriceTable1.Include(ctx, priceDownstream)
+	totalPrice, err := PriceTableInstance.Include(ctx, priceDownstream)
 	fmt.Println("Total price updated to: ", totalPrice)
 	// end := time.Now()
 	// logger("RPC: %s, start time: %s, end time: %s, err: %v", method, start.Format("Basic"), end.Format(time.RFC3339), err)
@@ -245,7 +246,7 @@ func valid(authorization []string) bool {
 	return token == "some-secret-token"
 }
 
-func (PriceTable1 *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+func (PriceTableInstance *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	// authentication (token verification)
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
@@ -257,7 +258,16 @@ func (PriceTable1 *PriceTable) UnaryInterceptor(ctx context.Context, req interfa
 
 	tok, err := strconv.ParseInt(md["tokens"][0], 10, 64)
 
-	tokenleft, err := PriceTable1.Limit(ctx, tok)
+	// Attach the price info to response before sending
+	// right now let's just have price as half of the token.
+	price_string := strconv.FormatInt(tok/2, 10)
+	// [critical] Jiali: Being outgoing seems to be critical for us.
+	header := metadata.Pairs("price", price_string)
+	log.Println(header)
+	grpc.SendHeader(ctx, header)
+
+	// overload handler:
+	tokenleft, err := PriceTableInstance.Limit(ctx, tok)
 	if err == ErrLimitExhausted {
 		return nil, status.Errorf(codes.ResourceExhausted, "try again later")
 	} else if err != nil {
@@ -272,7 +282,6 @@ func (PriceTable1 *PriceTable) UnaryInterceptor(ctx context.Context, req interfa
 	// ctx = metadata.NewOutgoingContext(ctx, md)
 
 	m, err := handler(ctx, req)
-	// Attach the price info to response before sending
 
 	if err != nil {
 		logger("RPC failed with error %v", err)
