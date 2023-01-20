@@ -21,6 +21,7 @@ package main
 
 import (
 	"context"
+	"examples/interceptor"
 	"flag"
 	"fmt"
 	"io"
@@ -185,11 +186,11 @@ func main() {
 	}
 
 	const initialPrice = 2
-	priceTable := NewPriceTable(
+	priceTable := interceptor.NewPriceTable(
 		initialPrice,
-		NewPriceTableInMemory(),
+		interceptor.NewPriceTableInMemory(),
 	)
-	s := grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(priceTable.unaryInterceptor), grpc.StreamInterceptor(streamInterceptor))
+	s := grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(priceTable.UnaryInterceptor), grpc.StreamInterceptor(streamInterceptor))
 
 	creds_client, err_client := credentials.NewClientTLSFromFile(data.Path("x509/ca_cert.pem"), "x.test.example.com")
 	if err_client != nil {
@@ -198,7 +199,7 @@ func main() {
 
 	// Set up a connection to the downstream server, but with the client-side interceptor on top of priceTable.
 	conn, err := grpc.Dial(*addr, grpc.WithTransportCredentials(creds_client),
-		grpc.WithUnaryInterceptor(priceTable.unaryInterceptor_client))
+		grpc.WithUnaryInterceptor(priceTable.UnaryInterceptorClient))
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}

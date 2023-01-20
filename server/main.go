@@ -21,6 +21,7 @@ package main
 
 import (
 	"context"
+	"examples/interceptor"
 	"flag"
 	"fmt"
 	"io"
@@ -134,7 +135,13 @@ func main() {
 		log.Fatalf("failed to create credentials: %v", err)
 	}
 
-	s := grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(unaryInterceptor), grpc.StreamInterceptor(streamInterceptor))
+	const initialPrice = 2
+	priceTable := interceptor.NewPriceTable(
+		initialPrice,
+		interceptor.NewPriceTableInMemory(),
+	)
+
+	s := grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(priceTable.UnaryInterceptor), grpc.StreamInterceptor(streamInterceptor))
 
 	// Register EchoServer on the server.
 	pb.RegisterEchoServer(s, &server{})

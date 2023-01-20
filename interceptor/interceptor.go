@@ -2,7 +2,6 @@ package interceptor
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log"
 	"strings"
@@ -195,7 +194,7 @@ func (t *PriceTableInMemory) SetState(ctx context.Context, state PriceTableState
 const fallbackToken = "some-secret-token"
 
 // unaryInterceptor is an example unary interceptor.
-func (PriceTable1 *PriceTable) unaryInterceptor_client(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+func (PriceTable1 *PriceTable) UnaryInterceptorClient(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	var credsConfigured bool
 	for _, o := range opts {
 		_, ok := o.(grpc.PerRPCCredsCallOption)
@@ -225,11 +224,7 @@ func (PriceTable1 *PriceTable) unaryInterceptor_client(ctx context.Context, meth
 	return err
 }
 
-var Addr = flag.String("addr", "localhost:50052", "the address to connect to")
-
 var (
-	port = flag.Int("port", 50051, "the port to serve on")
-
 	errMissingMetadata = status.Errorf(codes.InvalidArgument, "missing metadata")
 )
 
