@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"strings"
 	"time"
@@ -20,9 +19,6 @@ import (
 	"google.golang.org/grpc/credentials/oauth"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
-
-	ecpb "google.golang.org/grpc/examples/features/proto/echo"
-	pb "google.golang.org/grpc/examples/features/proto/echo"
 )
 
 func StringLength(s string) int {
@@ -198,16 +194,6 @@ func (t *PriceTableInMemory) SetState(ctx context.Context, state PriceTableState
 
 const fallbackToken = "some-secret-token"
 
-func callUnaryEcho(ctx context.Context, client ecpb.EchoClient, message string) {
-	// [critical] to pass ctx to subrequests.
-	resp, err := client.UnaryEcho(ctx, &ecpb.EchoRequest{Message: message})
-	// The function UnaryEcho above is the RPC stub provided by downstream nodes (server/main.go) to this service to call.
-	if err != nil {
-		log.Fatalf("client.UnaryEcho(_) = _, %v: ", err)
-	}
-	fmt.Println("UnaryEcho: ", resp.Message)
-}
-
 // unaryInterceptor is an example unary interceptor.
 func (PriceTable1 *PriceTable) unaryInterceptor_client(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	var credsConfigured bool
@@ -250,58 +236,6 @@ var (
 // logger is to mock a sophisticated logging system. To simplify the example, we just print out the content.
 func logger(format string, a ...interface{}) {
 	fmt.Printf("LOG:\t"+format+"\n", a...)
-}
-
-type Server struct {
-	pb.UnimplementedEchoServer
-	// This line below is the downstream server (an echo client) of the server.
-	rgc ecpb.EchoClient
-}
-
-// func newServer(priceTable *PriceTable) *server {
-// 	// This function creates a new server with a given pricetable, which is used later for the client interceptor
-// 	creds_client, err_client := credentials.NewClientTLSFromFile(data.Path("x509/ca_cert.pem"), "x.test.example.com")
-// 	if err_client != nil {
-// 		log.Fatalf("failed to load credentials: %v", err_client)
-// 	}
-
-// 	// Set up a connection to the downstream server.
-// 	conn, err := grpc.Dial(*addr, grpc.WithTransportCredentials(creds_client),
-// 		grpc.WithUnaryInterceptor(priceTable.unaryInterceptor_client))
-// 	if err != nil {
-// 		log.Fatalf("did not connect: %v", err)
-// 	}
-// 	// defer conn.Close()
-
-// 	// Make a echo client and send RPCs.
-// 	// rgc := ecpb.NewEchoClient(conn)
-
-// 	s := &server{rgc: ecpb.NewEchoClient(conn)}
-// 	return s
-// }
-
-func (s *Server) UnaryEcho(ctx context.Context, in *pb.EchoRequest) (*pb.EchoResponse, error) {
-	// This function is the server-side stub provided by this service to upstream nodes/clients.
-	fmt.Printf("unary echoing message at server 2 %q\n", in.Message)
-	// [critical] to pass ctx from upstream to downstream
-	// This function is called when the middle tier service behave as a client and dials the downstream nodes.
-	callUnaryEcho(ctx, s.rgc, in.Message)
-	return &pb.EchoResponse{Message: in.Message}, nil
-}
-
-func (s *Server) BidirectionalStreamingEcho(stream pb.Echo_BidirectionalStreamingEchoServer) error {
-	for {
-		in, err := stream.Recv()
-		if err != nil {
-			if err == io.EOF {
-				return nil
-			}
-			fmt.Printf("server: error receiving from stream: %v\n", err)
-			return err
-		}
-		fmt.Printf("bidi echoing message %q\n", in.Message)
-		stream.Send(&pb.EchoResponse{Message: in.Message})
-	}
 }
 
 // valid validates the authorization.
