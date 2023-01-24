@@ -79,9 +79,9 @@ func NewPriceTable(initprice int64, priceTableStateBackend PriceTableStateBacken
 
 // Limit takes tokens from the request according to the price table,
 // then it updates the price table according to the tokens on the req.
-// It returns #token left and a nil error if the request has sufficient amount of tokens.
+// It returns #token left, total price, and a nil error if the request has sufficient amount of tokens.
 // It returns ErrLimitExhausted if the amount of available tokens is less than requested.
-func (t *PriceTable) Limit(ctx context.Context, tokens int64) (int64, error) {
+func (t *PriceTable) Limit(ctx context.Context, tokens int64) (int64, int64, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	// if err := t.locker.Lock(ctx); err != nil {
@@ -94,7 +94,7 @@ func (t *PriceTable) Limit(ctx context.Context, tokens int64) (int64, error) {
 	// }()
 	state, err := t.backend.State(ctx)
 	if err != nil {
-		return 0, err
+		return 0, state.downstreamPrice + state.ownPrice, err
 	}
 	if state.isZero() {
 		// Initially the price table is initprice.
@@ -112,30 +112,32 @@ func (t *PriceTable) Limit(ctx context.Context, tokens int64) (int64, error) {
 	// 	// 	state.ownPrice = t.initprice
 	// 	// }
 	// }
+	var extratoken int64
+	extratoken = tokens - state.ownPrice - state.downstreamPrice
 
-	if tokens < state.ownPrice+state.downstreamPrice {
-		fmt.Printf("Request rejected for lack of tokens. ownPrice is %d downstream price is %d\n", state.ownPrice, state.downstreamPrice)
+	if extratoken < 0 {
+		logger("Request rejected for lack of tokens. ownPrice is %d downstream price is %d\n", state.ownPrice, state.downstreamPrice)
 		if state.ownPrice > 0 {
 			state.ownPrice -= 1
 		}
 
 		if err = t.backend.SetState(ctx, state); err != nil {
-			return 0, err
+			return 0, state.downstreamPrice + state.ownPrice, err
 		}
-		return state.ownPrice + state.downstreamPrice - tokens, ErrLimitExhausted
+		return 0, state.downstreamPrice + state.ownPrice, ErrLimitExhausted
 	}
 
 	// Take the tokens from the req.
 	var tokenleft int64
-	tokenleft = tokens - state.ownPrice - state.downstreamPrice
+	tokenleft = tokens - state.ownPrice
 
 	state.ownPrice += 1
-	fmt.Printf("Own price updated to %d\n", state.ownPrice)
+	logger("Own price updated to %d\n", state.ownPrice)
 
 	if err = t.backend.SetState(ctx, state); err != nil {
-		return 0, err
+		return 0, state.downstreamPrice + state.ownPrice, err
 	}
-	return tokenleft, nil
+	return tokenleft, state.downstreamPrice + state.ownPrice, nil
 }
 
 // // Limit takes x token from the req.
@@ -158,7 +160,7 @@ func (t *PriceTable) Include(ctx context.Context, downstreamPrice int64) (int64,
 
 	// Update the downstream price.
 	state.downstreamPrice = downstreamPrice
-	fmt.Printf("Downstream price updated to %d\n", state.downstreamPrice)
+	logger("Downstream price updated to %d\n", state.downstreamPrice)
 
 	if err = t.backend.SetState(ctx, state); err != nil {
 		return 0, err
@@ -219,7 +221,7 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorClient(ctx context.Context
 	// fmt.Println("Price from downstream: ", header["price"])
 	priceDownstream, err := strconv.ParseInt(header["price"][0], 10, 64)
 	totalPrice, err := PriceTableInstance.Include(ctx, priceDownstream)
-	fmt.Println("Total price updated to: ", totalPrice)
+	logger("total price updated to: %v\n", totalPrice)
 	// end := time.Now()
 	// logger("RPC: %s, start time: %s, end time: %s, err: %v", method, start.Format("Basic"), end.Format(time.RFC3339), err)
 	return err
@@ -258,16 +260,8 @@ func (PriceTableInstance *PriceTable) UnaryInterceptor(ctx context.Context, req 
 
 	tok, err := strconv.ParseInt(md["tokens"][0], 10, 64)
 
-	// Attach the price info to response before sending
-	// right now let's just have price as half of the token.
-	price_string := strconv.FormatInt(tok/2, 10)
-	// [critical] Jiali: Being outgoing seems to be critical for us.
-	header := metadata.Pairs("price", price_string)
-	log.Println(header)
-	grpc.SendHeader(ctx, header)
-
 	// overload handler:
-	tokenleft, err := PriceTableInstance.Limit(ctx, tok)
+	tokenleft, totalprice, err := PriceTableInstance.Limit(ctx, tok)
 	if err == ErrLimitExhausted {
 		return nil, status.Errorf(codes.ResourceExhausted, "try again later")
 	} else if err != nil {
@@ -275,6 +269,14 @@ func (PriceTableInstance *PriceTable) UnaryInterceptor(ctx context.Context, req 
 		log.Println(err)
 		return nil, status.Error(codes.Internal, "internal error")
 	}
+
+	// Attach the price info to response before sending
+	// right now let's just have price as half of the token.
+	price_string := strconv.FormatInt(totalprice, 10)
+	// [critical] Jiali: Being outgoing seems to be critical for us.
+	header := metadata.Pairs("price", price_string)
+	logger("total price is %s\n", price_string)
+	grpc.SendHeader(ctx, header)
 
 	tok_string := strconv.FormatInt(tokenleft, 10)
 	// [critical] Jiali: Being outgoing seems to be critical for us.
