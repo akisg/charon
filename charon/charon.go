@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
 	"strconv"
@@ -132,6 +131,9 @@ func (t *PriceTable) Limit(ctx context.Context, tokens int64) (int64, int64, err
 	tokenleft = tokens - state.ownPrice
 
 	state.ownPrice += 1
+	if state.ownPrice > 8 {
+		state.ownPrice -= 8
+	}
 	logger("Own price updated to %d\n", state.ownPrice)
 
 	if err = t.backend.SetState(ctx, state); err != nil {
@@ -236,24 +238,19 @@ func logger(format string, a ...interface{}) {
 	fmt.Printf("LOG:\t"+format+"\n", a...)
 }
 
-// valid validates the authorization.
-func valid(authorization []string) bool {
-	if len(authorization) < 1 {
-		return false
-	}
-	token := strings.TrimPrefix(authorization[0], "Bearer ")
-	// Perform the token validation here. For the sake of this example, the code
-	// here forgoes any of the usual OAuth2 token validation and instead checks
-	// for a token matching an arbitrary string.
-	return token == "some-secret-token"
+func getMethodInfo(ctx context.Context) {
+	methodName, _ := grpc.Method(ctx)
+	fmt.Println(methodName)
 }
 
 func (PriceTableInstance *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-	// authentication (token verification)
+	// This is the server side interceptor, it should check tokens, update price, do overload handling and attach price to response
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		return nil, errMissingMetadata
 	}
+
+	getMethodInfo(ctx)
 
 	logger("tokens are %s\n", md["tokens"])
 	// Jiali: overload handler, do AQM, deduct the tokens on the request, update price info
@@ -271,9 +268,8 @@ func (PriceTableInstance *PriceTable) UnaryInterceptor(ctx context.Context, req 
 	}
 
 	// Attach the price info to response before sending
-	// right now let's just have price as half of the token.
+	// right now let's just propagate the price as it is in the pricetable.
 	price_string := strconv.FormatInt(totalprice, 10)
-	// [critical] Jiali: Being outgoing seems to be critical for us.
 	header := metadata.Pairs("price", price_string)
 	logger("total price is %s\n", price_string)
 	grpc.SendHeader(ctx, header)
