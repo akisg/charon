@@ -240,7 +240,7 @@ func logger(format string, a ...interface{}) {
 
 func getMethodInfo(ctx context.Context) {
 	methodName, _ := grpc.Method(ctx)
-	fmt.Println(methodName)
+	logger(methodName)
 }
 
 func (PriceTableInstance *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
@@ -251,6 +251,7 @@ func (PriceTableInstance *PriceTable) UnaryInterceptor(ctx context.Context, req 
 	}
 
 	getMethodInfo(ctx)
+	logger(info.FullMethod)
 
 	logger("tokens are %s\n", md["tokens"])
 	// Jiali: overload handler, do AQM, deduct the tokens on the request, update price info
