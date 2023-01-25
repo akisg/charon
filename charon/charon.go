@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/rand"
 	"time"
 
 	"strconv"
@@ -217,13 +218,61 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorClient(ctx context.Context
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
 	var header metadata.MD // variable to store header and trailer
 	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
+	if err != nil {
+		// The request failed. This error should be logged and examined.
+		// log.Println(err)
+		return err
+	}
 	// err := invoker(ctx, method, req, reply, cc, opts...)
 	// log.Println(err)
 	// Jiali: after replied. update and store the price info for future
 	// fmt.Println("Price from downstream: ", header["price"])
-	priceDownstream, err := strconv.ParseInt(header["price"][0], 10, 64)
-	totalPrice, err := PriceTableInstance.Include(ctx, priceDownstream)
+	priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
+	totalPrice, _ := PriceTableInstance.Include(ctx, priceDownstream)
 	logger("total price updated to: %v\n", totalPrice)
+	// end := time.Now()
+	// logger("RPC: %s, start time: %s, end time: %s, err: %v", method, start.Format("Basic"), end.Format(time.RFC3339), err)
+	return err
+}
+
+// unaryInterceptor is an example unary interceptor.
+func (PriceTableInstance *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+	var credsConfigured bool
+	for _, o := range opts {
+		_, ok := o.(grpc.PerRPCCredsCallOption)
+		if ok {
+			credsConfigured = true
+			break
+		}
+	}
+	if !credsConfigured {
+		opts = append(opts, grpc.PerRPCCredentials(oauth.NewOauthAccess(&oauth2.Token{
+			AccessToken: fallbackToken,
+		})))
+	}
+	// start := time.Now()
+
+	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
+
+	rand.Seed(time.Now().UnixNano())
+	tok := rand.Intn(10)
+	tok_string := strconv.Itoa(tok)
+	ctx = metadata.AppendToOutgoingContext(ctx, "tokens", tok_string)
+
+	var header metadata.MD // variable to store header and trailer
+	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
+	if err != nil {
+		// The request failed. This error should be logged and examined.
+		// log.Println(err)
+		return err
+	}
+	// Jiali: after replied. update and store the price info for future
+	priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
+	totalPrice, _ := PriceTableInstance.Include(ctx, priceDownstream)
+	logger("Total price is %d\n", totalPrice)
+	// err := invoker(ctx, method, req, reply, cc, opts...)
+	// Jiali: after replied. update and store the price info for future
+
 	// end := time.Now()
 	// logger("RPC: %s, start time: %s, end time: %s, err: %v", method, start.Format("Basic"), end.Format(time.RFC3339), err)
 	return err
