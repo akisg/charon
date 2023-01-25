@@ -215,6 +215,7 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorClient(ctx context.Context
 	}
 	// start := time.Now()
 
+	logger(method)
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
 	var header metadata.MD // variable to store header and trailer
 	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
@@ -252,6 +253,7 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorEnduser(ctx context.Contex
 	}
 	// start := time.Now()
 
+	logger(method)
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
 
 	rand.Seed(time.Now().UnixNano())
