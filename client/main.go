@@ -25,10 +25,9 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"strconv"
 	"time"
 
-	"math/rand"
+	"github.com/tgiannoukos/charon"
 
 	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
@@ -36,7 +35,6 @@ import (
 	"google.golang.org/grpc/credentials/oauth"
 	"google.golang.org/grpc/examples/data"
 	ecpb "google.golang.org/grpc/examples/features/proto/echo"
-	"google.golang.org/grpc/metadata"
 )
 
 var addr = flag.String("addr", "localhost:50051", "the address to connect to")
@@ -46,38 +44,6 @@ const fallbackToken = "some-secret-token"
 // logger is to mock a sophisticated logging system. To simplify the example, we just print out the content.
 func logger(format string, a ...interface{}) {
 	fmt.Printf("LOG:\t"+format+"\n", a...)
-}
-
-// unaryInterceptor is an example unary interceptor.
-func unaryInterceptor(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-	var credsConfigured bool
-	for _, o := range opts {
-		_, ok := o.(grpc.PerRPCCredsCallOption)
-		if ok {
-			credsConfigured = true
-			break
-		}
-	}
-	if !credsConfigured {
-		opts = append(opts, grpc.PerRPCCredentials(oauth.NewOauthAccess(&oauth2.Token{
-			AccessToken: fallbackToken,
-		})))
-	}
-	// start := time.Now()
-
-	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
-
-	rand.Seed(time.Now().UnixNano())
-	tok := rand.Intn(10)
-	tok_string := strconv.Itoa(tok)
-	ctx = metadata.AppendToOutgoingContext(ctx, "tokens", tok_string)
-
-	err := invoker(ctx, method, req, reply, cc, opts...)
-	// Jiali: after replied. update and store the price info for future
-
-	// end := time.Now()
-	// logger("RPC: %s, start time: %s, end time: %s, err: %v", method, start.Format("Basic"), end.Format(time.RFC3339), err)
-	return err
 }
 
 // wrappedStream  wraps around the embedded grpc.ClientStream, and intercepts the RecvMsg and
@@ -166,8 +132,15 @@ func main() {
 		log.Fatalf("failed to load credentials: %v", err)
 	}
 
+	const initialPrice = 0
+	priceTable := charon.NewPriceTable(
+		initialPrice,
+		charon.NewPriceTableInMemory(),
+	)
+
 	// Set up a connection to the server.
-	conn, err := grpc.Dial(*addr, grpc.WithTransportCredentials(creds), grpc.WithUnaryInterceptor(unaryInterceptor), grpc.WithStreamInterceptor(streamInterceptor))
+	conn, err := grpc.Dial(*addr, grpc.WithTransportCredentials(creds),
+		grpc.WithUnaryInterceptor(priceTable.UnaryInterceptorEnduser), grpc.WithStreamInterceptor(streamInterceptor))
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}

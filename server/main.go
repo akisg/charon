@@ -26,7 +26,6 @@ import (
 	"io"
 	"log"
 	"net"
-	"strings"
 	"time"
 
 	"github.com/tgiannoukos/charon"
@@ -74,18 +73,6 @@ func (s *server) BidirectionalStreamingEcho(stream pb.Echo_BidirectionalStreamin
 		fmt.Printf("bidi echoing message %q\n", in.Message)
 		stream.Send(&pb.EchoResponse{Message: in.Message})
 	}
-}
-
-// valid validates the authorization.
-func valid(authorization []string) bool {
-	if len(authorization) < 1 {
-		return false
-	}
-	token := strings.TrimPrefix(authorization[0], "Bearer ")
-	// Perform the token validation here. For the sake of this example, the code
-	// here forgoes any of the usual OAuth2 token validation and instead checks
-	// for a token matching an arbitrary string.
-	return token == "some-secret-token"
 }
 
 // wrappedStream wraps around the embedded grpc.ServerStream, and intercepts the RecvMsg and
