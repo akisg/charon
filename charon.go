@@ -12,10 +12,8 @@ import (
 
 	"errors"
 
-	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/oauth"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
@@ -200,22 +198,23 @@ const fallbackToken = "some-secret-token"
 
 // unaryInterceptor is an example unary interceptor.
 func (PriceTableInstance *PriceTable) UnaryInterceptorClient(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-	var credsConfigured bool
+	// var credsConfigured bool
 	for _, o := range opts {
 		_, ok := o.(grpc.PerRPCCredsCallOption)
 		if ok {
-			credsConfigured = true
+			// credsConfigured = true
 			break
 		}
 	}
-	if !credsConfigured {
-		opts = append(opts, grpc.PerRPCCredentials(oauth.NewOauthAccess(&oauth2.Token{
-			AccessToken: fallbackToken,
-		})))
-	}
+	// if !credsConfigured {
+	// 	opts = append(opts, grpc.PerRPCCredentials(oauth.NewOauthAccess(&oauth2.Token{
+	// 		AccessToken: fallbackToken,
+	// 	})))
+	// }
 	// start := time.Now()
 
-	logger(method)
+	// Jiali: the following line print the method name of the req/response, will be used to update the
+	// logger(method)
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
 	var header metadata.MD // variable to store header and trailer
 	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
@@ -238,19 +237,19 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorClient(ctx context.Context
 
 // unaryInterceptor is an example unary interceptor.
 func (PriceTableInstance *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-	var credsConfigured bool
+	// var credsConfigured bool
 	for _, o := range opts {
 		_, ok := o.(grpc.PerRPCCredsCallOption)
 		if ok {
-			credsConfigured = true
+			// credsConfigured = true
 			break
 		}
 	}
-	if !credsConfigured {
-		opts = append(opts, grpc.PerRPCCredentials(oauth.NewOauthAccess(&oauth2.Token{
-			AccessToken: fallbackToken,
-		})))
-	}
+	// if !credsConfigured {
+	// 	opts = append(opts, grpc.PerRPCCredentials(oauth.NewOauthAccess(&oauth2.Token{
+	// 		AccessToken: fallbackToken,
+	// 	})))
+	// }
 	// start := time.Now()
 
 	logger(method)
@@ -301,8 +300,8 @@ func (PriceTableInstance *PriceTable) UnaryInterceptor(ctx context.Context, req 
 		return nil, errMissingMetadata
 	}
 
-	getMethodInfo(ctx)
-	logger(info.FullMethod)
+	// getMethodInfo(ctx)
+	// logger(info.FullMethod)
 
 	logger("tokens are %s\n", md["tokens"])
 	// Jiali: overload handler, do AQM, deduct the tokens on the request, update price info
