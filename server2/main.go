@@ -20,7 +20,6 @@
 package main
 
 import (
-	"charon/charon"
 	"context"
 	"flag"
 	"fmt"
@@ -28,6 +27,8 @@ import (
 	"log"
 	"net"
 	"time"
+
+	"github.com/tgiannoukos/charon"
 
 	"errors"
 
