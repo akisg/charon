@@ -20,13 +20,14 @@
 package main
 
 import (
-	"charon/charon"
 	"context"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"time"
+
+	"github.com/tgiannoukos/charon"
 
 	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
