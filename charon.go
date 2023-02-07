@@ -206,11 +206,6 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorClient(ctx context.Context
 			break
 		}
 	}
-	// if !credsConfigured {
-	// 	opts = append(opts, grpc.PerRPCCredentials(oauth.NewOauthAccess(&oauth2.Token{
-	// 		AccessToken: fallbackToken,
-	// 	})))
-	// }
 	// start := time.Now()
 
 	// Jiali: the following line print the method name of the req/response, will be used to update the
@@ -237,19 +232,6 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorClient(ctx context.Context
 
 // unaryInterceptor is an example unary interceptor.
 func (PriceTableInstance *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-	// var credsConfigured bool
-	for _, o := range opts {
-		_, ok := o.(grpc.PerRPCCredsCallOption)
-		if ok {
-			// credsConfigured = true
-			break
-		}
-	}
-	// if !credsConfigured {
-	// 	opts = append(opts, grpc.PerRPCCredentials(oauth.NewOauthAccess(&oauth2.Token{
-	// 		AccessToken: fallbackToken,
-	// 	})))
-	// }
 	// start := time.Now()
 
 	logger(method)

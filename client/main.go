@@ -29,10 +29,8 @@ import (
 
 	"github.com/tgiannoukos/charon"
 
-	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/oauth"
 	"google.golang.org/grpc/examples/data"
 	ecpb "google.golang.org/grpc/examples/features/proto/echo"
 )
@@ -68,19 +66,6 @@ func newWrappedStream(s grpc.ClientStream) grpc.ClientStream {
 
 // streamInterceptor is an example stream interceptor.
 func streamInterceptor(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
-	var credsConfigured bool
-	for _, o := range opts {
-		_, ok := o.(*grpc.PerRPCCredsCallOption)
-		if ok {
-			credsConfigured = true
-			break
-		}
-	}
-	if !credsConfigured {
-		opts = append(opts, grpc.PerRPCCredentials(oauth.NewOauthAccess(&oauth2.Token{
-			AccessToken: fallbackToken,
-		})))
-	}
 	s, err := streamer(ctx, desc, cc, method, opts...)
 	if err != nil {
 		return nil, err
