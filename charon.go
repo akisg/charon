@@ -71,7 +71,7 @@ func (t *PriceTable) Limit(ctx context.Context, tokens int64) (int64, int64, err
 	extratoken = tokens - totalPrice
 
 	if extratoken < 0 {
-		logger("Request rejected for lack of tokens. ownPrice is %d downstream price is %d\n", ownPrice, downstreamPrice)
+		logger("[Received Req]: Request rejected for lack of tokens. ownPrice is %d downstream price is %d\n", ownPrice, downstreamPrice)
 		if ownPrice > 0 {
 			ownPrice -= 1
 		}
@@ -88,7 +88,7 @@ func (t *PriceTable) Limit(ctx context.Context, tokens int64) (int64, int64, err
 	if ownPrice > 3 {
 		ownPrice -= 3
 	}
-	logger("Own price updated to %d\n", ownPrice)
+	logger("[Received Req]:	Own price updated to %d\n", ownPrice)
 
 	t.ptmap.Store("ownprice", ownPrice)
 	totalPrice = ownPrice + downstreamPrice
@@ -100,7 +100,7 @@ func (t *PriceTable) Include(ctx context.Context, method string, downstreamPrice
 
 	// Update the downstream price.
 	t.ptmap.Store(method, downstreamPrice)
-	logger("Downstream price updated to %d\n", downstreamPrice)
+	logger("[Received Resp]:	Downstream price updated to %d\n", downstreamPrice)
 
 	var totalprice int64
 	ownprice, _ := t.ptmap.LoadOrStore("ownprice", t.initprice)
@@ -140,7 +140,7 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorClient(ctx context.Context
 	if len(header["price"]) > 0 {
 		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
 		totalPrice, _ := PriceTableInstance.Include(ctx, method, priceDownstream)
-		logger("Total price is %d\n", totalPrice)
+		// logger("[Received Resp]:	Total price is %d\n", totalPrice)
 	}
 	// end := time.Now()
 	// logger("RPC: %s, start time: %s, end time: %s, err: %v", method, start.Format("Basic"), end.Format(time.RFC3339), err)
@@ -170,7 +170,7 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorEnduser(ctx context.Contex
 	if len(header["price"]) > 0 {
 		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
 		totalPrice, _ := PriceTableInstance.Include(ctx, method, priceDownstream)
-		logger("Total price is %d\n", totalPrice)
+		// logger("[Received Resp]:	Total price is %d\n", totalPrice)
 	}
 	// err := invoker(ctx, method, req, reply, cc, opts...)
 	// Jiali: after replied. update and store the price info for future
@@ -204,7 +204,7 @@ func (PriceTableInstance *PriceTable) UnaryInterceptor(ctx context.Context, req 
 	// getMethodInfo(ctx)
 	// logger(info.FullMethod)
 
-	logger("tokens are %s\n", md["tokens"])
+	logger("[Received Req]:	tokens are %s\n", md["tokens"])
 	// Jiali: overload handler, do AQM, deduct the tokens on the request, update price info
 
 	tok, err := strconv.ParseInt(md["tokens"][0], 10, 64)
@@ -223,7 +223,7 @@ func (PriceTableInstance *PriceTable) UnaryInterceptor(ctx context.Context, req 
 	// right now let's just propagate the corresponding price of the RPC method rather than a whole pricetable.
 	price_string := strconv.FormatInt(totalprice, 10)
 	header := metadata.Pairs("price", price_string)
-	logger("total price is %s\n", price_string)
+	logger("[Preparing Resp]:	Total price is %s\n", price_string)
 	grpc.SendHeader(ctx, header)
 
 	tok_string := strconv.FormatInt(tokenleft, 10)
