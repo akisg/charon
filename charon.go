@@ -137,9 +137,11 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorClient(ctx context.Context
 	// log.Println(err)
 	// Jiali: after replied. update and store the price info for future
 	// fmt.Println("Price from downstream: ", header["price"])
-	priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
-	totalPrice, _ := PriceTableInstance.Include(ctx, method, priceDownstream)
-	logger("total price updated to: %v\n", totalPrice)
+	if len(header["price"]) > 0 {
+		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
+		totalPrice, _ := PriceTableInstance.Include(ctx, method, priceDownstream)
+		logger("Total price is %d\n", totalPrice)
+	}
 	// end := time.Now()
 	// logger("RPC: %s, start time: %s, end time: %s, err: %v", method, start.Format("Basic"), end.Format(time.RFC3339), err)
 	return err
@@ -165,9 +167,11 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorEnduser(ctx context.Contex
 		return err
 	}
 	// Jiali: after replied. update and store the price info for future
-	priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
-	totalPrice, _ := PriceTableInstance.Include(ctx, method, priceDownstream)
-	logger("Total price is %d\n", totalPrice)
+	if len(header["price"]) > 0 {
+		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
+		totalPrice, _ := PriceTableInstance.Include(ctx, method, priceDownstream)
+		logger("Total price is %d\n", totalPrice)
+	}
 	// err := invoker(ctx, method, req, reply, cc, opts...)
 	// Jiali: after replied. update and store the price info for future
 
@@ -216,7 +220,7 @@ func (PriceTableInstance *PriceTable) UnaryInterceptor(ctx context.Context, req 
 	}
 
 	// Attach the price info to response before sending
-	// right now let's just propagate the price as it is in the pricetable.
+	// right now let's just propagate the corresponding price of the RPC method rather than a whole pricetable.
 	price_string := strconv.FormatInt(totalprice, 10)
 	header := metadata.Pairs("price", price_string)
 	logger("total price is %s\n", price_string)
