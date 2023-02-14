@@ -122,7 +122,6 @@ func main() {
 	priceTable := charon.NewPriceTable(
 		initialPrice,
 		sync.Map{},
-		sync.Map{},
 	)
 
 	// Set up a connection to the server.

@@ -43,11 +43,12 @@ type PriceTable struct {
 }
 
 // NewPriceTable creates a new instance of PriceTable.
-func NewPriceTable(initprice int64, callmap sync.Map, pricetable sync.Map) *PriceTable {
+// func NewPriceTable(initprice int64, callmap sync.Map, pricetable sync.Map) *PriceTable {
+func NewPriceTable(initprice int64, callmap sync.Map) *PriceTable {
 	return &PriceTable{
 		initprice: initprice,
 		cmap:      callmap,
-		ptmap:     pricetable,
+		ptmap:     sync.Map{},
 		// locker:     locker,
 		// clock:      clock,
 		// logger:     logger,

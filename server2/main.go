@@ -178,7 +178,6 @@ func main() {
 	priceTable := charon.NewPriceTable(
 		initialPrice,
 		sync.Map{},
-		sync.Map{},
 	)
 	s := grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(priceTable.UnaryInterceptor), grpc.StreamInterceptor(streamInterceptor))
 
