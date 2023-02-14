@@ -24,8 +24,8 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/tgiannoukos/charon"
@@ -114,19 +114,20 @@ func main() {
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
 	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
+		fmt.Printf("failed to listen: %v", err)
 	}
 
 	// Create tls based credential.
 	creds, err := credentials.NewServerTLSFromFile(data.Path("x509/server_cert.pem"), data.Path("x509/server_key.pem"))
 	if err != nil {
-		log.Fatalf("failed to create credentials: %v", err)
+		fmt.Printf("failed to create credentials: %v", err)
 	}
 
 	const initialPrice = 2
 	priceTable := charon.NewPriceTable(
 		initialPrice,
-		charon.NewPriceTableInMemory(),
+		sync.Map{},
+		sync.Map{},
 	)
 
 	s := grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(priceTable.UnaryInterceptor), grpc.StreamInterceptor(streamInterceptor))
@@ -135,6 +136,6 @@ func main() {
 	pb.RegisterEchoServer(s, &server{})
 
 	if err := s.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
+		fmt.Printf("failed to serve: %v", err)
 	}
 }

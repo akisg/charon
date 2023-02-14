@@ -24,8 +24,8 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/tgiannoukos/charon"
@@ -55,9 +55,10 @@ func callUnaryEcho(ctx context.Context, client ecpb.EchoClient, message string) 
 	resp, err := client.UnaryEcho(ctx, &ecpb.EchoRequest{Message: message})
 	// The function UnaryEcho above is the RPC stub provided by downstream nodes (server/main.go) to this service to call.
 	if err != nil {
-		log.Fatalf("client.UnaryEcho(_) = _, %v: ", err)
+		fmt.Printf("client.UnaryEcho(_) = _, %v: ", err)
+	} else {
+		fmt.Println("UnaryEcho: ", resp.Message)
 	}
-	fmt.Println("UnaryEcho: ", resp.Message)
 }
 
 var addr = flag.String("addr", "localhost:50052", "the address to connect to")
@@ -83,14 +84,14 @@ type server struct {
 // 	// This function creates a new server with a given pricetable, which is used later for the client interceptor
 // 	creds_client, err_client := credentials.NewClientTLSFromFile(data.Path("x509/ca_cert.pem"), "x.test.example.com")
 // 	if err_client != nil {
-// 		log.Fatalf("failed to load credentials: %v", err_client)
+// 		fmt.Printf("failed to load credentials: %v", err_client)
 // 	}
 
 // 	// Set up a connection to the downstream server.
 // 	conn, err := grpc.Dial(*addr, grpc.WithTransportCredentials(creds_client),
 // 		grpc.WithUnaryInterceptor(priceTable.unaryInterceptor_client))
 // 	if err != nil {
-// 		log.Fatalf("did not connect: %v", err)
+// 		fmt.Printf("did not connect: %v", err)
 // 	}
 // 	// defer conn.Close()
 
@@ -164,32 +165,33 @@ func main() {
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
 	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
+		fmt.Printf("failed to listen: %v", err)
 	}
 
 	// Create tls based credential.
 	creds, err := credentials.NewServerTLSFromFile(data.Path("x509/server_cert.pem"), data.Path("x509/server_key.pem"))
 	if err != nil {
-		log.Fatalf("failed to create credentials: %v", err)
+		fmt.Printf("failed to create credentials: %v", err)
 	}
 
 	const initialPrice = 2
 	priceTable := charon.NewPriceTable(
 		initialPrice,
-		charon.NewPriceTableInMemory(),
+		sync.Map{},
+		sync.Map{},
 	)
 	s := grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(priceTable.UnaryInterceptor), grpc.StreamInterceptor(streamInterceptor))
 
 	creds_client, err_client := credentials.NewClientTLSFromFile(data.Path("x509/ca_cert.pem"), "x.test.example.com")
 	if err_client != nil {
-		log.Fatalf("failed to load credentials: %v", err_client)
+		fmt.Printf("failed to load credentials: %v", err_client)
 	}
 
 	// Set up a connection to the downstream server, but with the client-side interceptor on top of priceTable.
 	conn, err := grpc.Dial(*addr, grpc.WithTransportCredentials(creds_client),
 		grpc.WithUnaryInterceptor(priceTable.UnaryInterceptorClient))
 	if err != nil {
-		log.Fatalf("did not connect: %v", err)
+		fmt.Printf("did not connect: %v", err)
 	}
 
 	// Make a echo client rgc and send RPCs.
@@ -197,7 +199,7 @@ func main() {
 	pb.RegisterEchoServer(s, &server{rgc: ecpb.NewEchoClient(conn)})
 
 	if err := s.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
+		fmt.Printf("failed to serve: %v", err)
 	}
 
 }

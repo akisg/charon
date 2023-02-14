@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/tgiannoukos/charon"
@@ -120,7 +121,8 @@ func main() {
 	const initialPrice = 0
 	priceTable := charon.NewPriceTable(
 		initialPrice,
-		charon.NewPriceTableInMemory(),
+		sync.Map{},
+		sync.Map{},
 	)
 
 	// Set up a connection to the server.
