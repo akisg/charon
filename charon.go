@@ -139,7 +139,7 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorClient(ctx context.Context
 	// fmt.Println("Price from downstream: ", header["price"])
 	if len(header["price"]) > 0 {
 		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
-		totalPrice, _ := PriceTableInstance.Include(ctx, method, priceDownstream)
+		PriceTableInstance.Include(ctx, method, priceDownstream)
 		// logger("[Received Resp]:	Total price is %d\n", totalPrice)
 	}
 	// end := time.Now()
@@ -169,7 +169,7 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorEnduser(ctx context.Contex
 	// Jiali: after replied. update and store the price info for future
 	if len(header["price"]) > 0 {
 		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
-		totalPrice, _ := PriceTableInstance.Include(ctx, method, priceDownstream)
+		PriceTableInstance.Include(ctx, method, priceDownstream)
 		// logger("[Received Resp]:	Total price is %d\n", totalPrice)
 	}
 	// err := invoker(ctx, method, req, reply, cc, opts...)
