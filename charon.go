@@ -76,6 +76,7 @@ func (t *PriceTable) Limit(ctx context.Context, tokens int64) (int64, int64, err
 			ownPrice -= 1
 		}
 		t.ptmap.Store("ownprice", ownPrice)
+		totalPrice = ownPrice + downstreamPrice
 		return 0, totalPrice, ErrLimitExhausted
 	}
 
@@ -84,12 +85,13 @@ func (t *PriceTable) Limit(ctx context.Context, tokens int64) (int64, int64, err
 	tokenleft = tokens - ownPrice
 
 	ownPrice += 1
-	if ownPrice > 8 {
-		ownPrice -= 8
+	if ownPrice > 3 {
+		ownPrice -= 3
 	}
 	logger("Own price updated to %d\n", ownPrice)
 
 	t.ptmap.Store("ownprice", ownPrice)
+	totalPrice = ownPrice + downstreamPrice
 	return tokenleft, totalPrice, nil
 }
 
