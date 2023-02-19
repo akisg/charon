@@ -109,8 +109,6 @@ func (t *PriceTable) Include(ctx context.Context, method string, downstreamPrice
 	return totalprice, nil
 }
 
-const fallbackToken = "some-secret-token"
-
 // unaryInterceptor is an example unary interceptor.
 func (PriceTableInstance *PriceTable) UnaryInterceptorClient(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	// var credsConfigured bool
@@ -155,7 +153,7 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorEnduser(ctx context.Contex
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
 
 	rand.Seed(time.Now().UnixNano())
-	tok := rand.Intn(10)
+	tok := rand.Intn(10) + 100
 	tok_string := strconv.Itoa(tok)
 	ctx = metadata.AppendToOutgoingContext(ctx, "tokens", tok_string)
 
