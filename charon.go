@@ -229,6 +229,7 @@ func (PriceTableInstance *PriceTable) UnaryInterceptor(ctx context.Context, req 
 	ctx = metadata.AppendToOutgoingContext(ctx, "tokens", tok_string)
 	// ctx = metadata.NewOutgoingContext(ctx, md)
 
+	logger("[Preparing Sub Req]:	Token left is %s\n", tok_string)
 	m, err := handler(ctx, req)
 
 	if err != nil {
