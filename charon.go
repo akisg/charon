@@ -66,8 +66,9 @@ func (t *PriceTable) Limit(ctx context.Context, tokens int64) (int64, int64, err
 	ownPrice := resultop.(int64)
 	resultdp, _ := t.ptmap.LoadOrStore("/greeting.v3.GreetingService/Greeting", t.initprice)
 	downstreamPrice := resultdp.(int64)
+	resulttp, _ := t.ptmap.LoadOrStore("totalprice", t.initprice)
+	totalPrice := resulttp.(int64)
 	var extratoken int64
-	totalPrice := ownPrice + downstreamPrice
 	extratoken = tokens - totalPrice
 
 	logger("[Received Req]:	Total price is %d, ownPrice is %d downstream price is %d\n", totalPrice, ownPrice, downstreamPrice)
