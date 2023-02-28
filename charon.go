@@ -70,6 +70,8 @@ func (t *PriceTable) Limit(ctx context.Context, tokens int64) (int64, int64, err
 	totalPrice := ownPrice + downstreamPrice
 	extratoken = tokens - totalPrice
 
+	logger("[Received Req]:	Total price is %d, ownPrice is %d downstream price is %d\n", totalPrice, ownPrice, downstreamPrice)
+
 	if extratoken < 0 {
 		logger("[Received Req]: Request rejected for lack of tokens. ownPrice is %d downstream price is %d\n", ownPrice, downstreamPrice)
 		if ownPrice > 0 {
@@ -106,6 +108,7 @@ func (t *PriceTable) Include(ctx context.Context, method string, downstreamPrice
 	ownprice, _ := t.ptmap.LoadOrStore("ownprice", t.initprice)
 	totalprice = ownprice.(int64) + downstreamPrice
 	t.ptmap.Store("totalprice", totalprice)
+	logger("[Received Resp]:	Total price updated to %d\n", totalprice)
 	return totalprice, nil
 }
 
