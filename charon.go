@@ -2,7 +2,6 @@ package charon
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"math/rand"
 	"time"
@@ -188,7 +187,7 @@ var (
 
 // logger is to mock a sophisticated logging system. To simplify the example, we just print out the content.
 func logger(format string, a ...interface{}) {
-	fmt.Printf("LOG:\t"+format+"\n", a...)
+	// fmt.Printf("LOG:\t"+format+"\n", a...)
 }
 
 func getMethodInfo(ctx context.Context) {
