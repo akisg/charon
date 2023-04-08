@@ -125,7 +125,7 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorClient(ctx context.Context
 	// start := time.Now()
 
 	// Jiali: the following line print the method name of the req/response, will be used to update the
-	// logger(method)
+	logger(method)
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
 	var header metadata.MD // variable to store header and trailer
 	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
@@ -187,7 +187,7 @@ var (
 
 // logger is to mock a sophisticated logging system. To simplify the example, we just print out the content.
 func logger(format string, a ...interface{}) {
-	// fmt.Printf("LOG:\t"+format+"\n", a...)
+	fmt.Printf("LOG:\t"+format+"\n", a...)
 }
 
 func getMethodInfo(ctx context.Context) {
@@ -203,7 +203,7 @@ func (PriceTableInstance *PriceTable) UnaryInterceptor(ctx context.Context, req 
 	}
 
 	// getMethodInfo(ctx)
-	// logger(info.FullMethod)
+	logger(info.FullMethod)
 
 	logger("[Received Req]:	tokens are %s\n", md["tokens"])
 	// Jiali: overload handler, do AQM, deduct the tokens on the request, update price info
