@@ -116,16 +116,16 @@ func (t *PriceTable) Include(ctx context.Context, method string, downstreamPrice
 // unaryInterceptor is an example unary interceptor.
 func (PriceTableInstance *PriceTable) UnaryInterceptorClient(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	// var credsConfigured bool
-	for _, o := range opts {
-		_, ok := o.(grpc.PerRPCCredsCallOption)
-		if ok {
-			// credsConfigured = true
-			break
-		}
-	}
-	// start := time.Now()
+	// for _, o := range opts {
+	// 	_, ok := o.(grpc.PerRPCCredsCallOption)
+	// 	if ok {
+	// 		// credsConfigured = true
+	// 		break
+	// 	}
+	// }
 
 	// Jiali: the following line print the method name of the req/response, will be used to update the
+	logger("[Before Req]:	The method name for price table is ")
 	logger(method)
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
 	var header metadata.MD // variable to store header and trailer
