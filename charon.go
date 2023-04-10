@@ -62,12 +62,12 @@ func NewPriceTable(initprice int64, callmap sync.Map) *PriceTable {
 // It returns ErrLimitExhausted if the amount of available tokens is less than requested.
 func (t *PriceTable) Limit(ctx context.Context, tokens int64) (int64, int64, error) {
 
-	resultop, _ := t.ptmap.LoadOrStore("ownprice", t.initprice)
-	ownPrice := resultop.(int64)
-	resultdp, _ := t.ptmap.LoadOrStore("/greeting.v3.GreetingService/Greeting", t.initprice)
-	downstreamPrice := resultdp.(int64)
-	resulttp, _ := t.ptmap.LoadOrStore("totalprice", t.initprice)
-	totalPrice := resulttp.(int64)
+	ownPrice_string, _ := t.ptmap.LoadOrStore("ownprice", t.initprice)
+	ownPrice := ownPrice_string.(int64)
+	downstreamPrice_string, _ := t.ptmap.LoadOrStore("/greeting.v3.GreetingService/Greeting", t.initprice)
+	downstreamPrice := downstreamPrice_string.(int64)
+	totalPrice_string, _ := t.ptmap.LoadOrStore("totalprice", t.initprice)
+	totalPrice := totalPrice_string.(int64)
 	var extratoken int64
 	extratoken = tokens - totalPrice
 
@@ -153,6 +153,7 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorClient(ctx context.Context
 func (PriceTableInstance *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	// start := time.Now()
 
+	logger("[Before Req]:	The method name for price table is ")
 	logger(method)
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
 
@@ -204,6 +205,7 @@ func (PriceTableInstance *PriceTable) UnaryInterceptor(ctx context.Context, req 
 	}
 
 	// getMethodInfo(ctx)
+	logger("[Received Req]:	The method name for request is ")
 	logger(info.FullMethod)
 
 	logger("[Received Req]:	tokens are %s\n", md["tokens"])
