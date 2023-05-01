@@ -162,6 +162,9 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorEnduser(ctx context.Contex
 	tok_string := strconv.Itoa(tok)
 	ctx = metadata.AppendToOutgoingContext(ctx, "tokens", tok_string)
 
+	// check price table before sending a request, if price > tokens, enqueue the request and return
+	// enqueue
+
 	var header metadata.MD // variable to store header and trailer
 	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
 	if err != nil {
@@ -175,6 +178,10 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorEnduser(ctx context.Contex
 		PriceTableInstance.Include(ctx, method, priceDownstream)
 		// logger("[Received Resp]:	Total price is %d\n", totalPrice)
 	}
+	// check again the token and price and queue, to dequeue
+	// req = dequeue
+	// invo
+
 	// err := invoker(ctx, method, req, reply, cc, opts...)
 	// Jiali: after replied. update and store the price info for future
 
