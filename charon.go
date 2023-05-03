@@ -18,10 +18,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// func StringLength(s string) int {
-// 	return len(s)
-// }
-
 var (
 	// ErrLimitExhausted is returned by the Limiter in case the number of requests overflows the capacity of a Limiter.
 	ErrLimitExhausted = errors.New("requests limit exhausted")
@@ -115,14 +111,6 @@ func (t *PriceTable) Include(ctx context.Context, method string, downstreamPrice
 
 // unaryInterceptor is an example unary interceptor.
 func (PriceTableInstance *PriceTable) UnaryInterceptorClient(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-	// var credsConfigured bool
-	// for _, o := range opts {
-	// 	_, ok := o.(grpc.PerRPCCredsCallOption)
-	// 	if ok {
-	// 		// credsConfigured = true
-	// 		break
-	// 	}
-	// }
 
 	// Jiali: the following line print the method name of the req/response, will be used to update the
 	logger("[Before Req]:	The method name for price table is ")
@@ -136,22 +124,16 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorClient(ctx context.Context
 		return err
 	}
 	// err := invoker(ctx, method, req, reply, cc, opts...)
-	// log.Println(err)
 	// Jiali: after replied. update and store the price info for future
-	// fmt.Println("Price from downstream: ", header["price"])
 	if len(header["price"]) > 0 {
 		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
 		PriceTableInstance.Include(ctx, method, priceDownstream)
-		// logger("[Received Resp]:	Total price is %d\n", totalPrice)
 	}
-	// end := time.Now()
-	// logger("RPC: %s, start time: %s, end time: %s, err: %v", method, start.Format("Basic"), end.Format(time.RFC3339), err)
 	return err
 }
 
 // unaryInterceptor is an example unary interceptor.
 func (PriceTableInstance *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-	// start := time.Now()
 
 	logger("[Before Req]:	The method name for price table is ")
 	logger(method)
@@ -173,13 +155,8 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorEnduser(ctx context.Contex
 	if len(header["price"]) > 0 {
 		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
 		PriceTableInstance.Include(ctx, method, priceDownstream)
-		// logger("[Received Resp]:	Total price is %d\n", totalPrice)
 	}
-	// err := invoker(ctx, method, req, reply, cc, opts...)
 	// Jiali: after replied. update and store the price info for future
-
-	// end := time.Now()
-	// logger("RPC: %s, start time: %s, end time: %s, err: %v", method, start.Format("Basic"), end.Format(time.RFC3339), err)
 	return err
 }
 
@@ -236,7 +213,13 @@ func (PriceTableInstance *PriceTable) UnaryInterceptor(ctx context.Context, req 
 	// ctx = metadata.NewOutgoingContext(ctx, md)
 
 	logger("[Preparing Sub Req]:	Token left is %s\n", tok_string)
+
+	start := time.Now()
+
 	m, err := handler(ctx, req)
+
+	duration := time.Since(start).Milliseconds()
+	fmt.Printf("[Server-side Timer] Processing Duration is: %.2d milliseconds\n", duration)
 
 	if err != nil {
 		logger("RPC failed with error %v", err)
