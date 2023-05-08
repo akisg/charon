@@ -57,7 +57,7 @@ type server struct {
 
 func (s *server) UnaryEcho(ctx context.Context, in *pb.EchoRequest) (*pb.EchoResponse, error) {
 	fmt.Printf("unary echoing message %q\n", in.Message)
-	time.Sleep(time.Millisecond * 1000) // example code to sleep for 500 milliseconds
+	time.Sleep(time.Millisecond * 500) // example code to sleep for 500 milliseconds
 	return &pb.EchoResponse{Message: "Response from backend."}, nil
 }
 
@@ -127,6 +127,7 @@ func main() {
 	const initialPrice = 2
 	priceTable := charon.NewPriceTable(
 		initialPrice,
+		"backend",
 		sync.Map{},
 	)
 

@@ -29,6 +29,7 @@ type PriceTable struct {
 	// The following lockfree hashmap should contain total price, selfprice and downstream price
 	// initprice is the price table's initprice.
 	initprice int64
+	nodename  string
 	cmap      sync.Map
 	ptmap     sync.Map
 	// clock   Clock
@@ -40,9 +41,10 @@ type PriceTable struct {
 
 // NewPriceTable creates a new instance of PriceTable.
 // func NewPriceTable(initprice int64, callmap sync.Map, pricetable sync.Map) *PriceTable {
-func NewPriceTable(initprice int64, callmap sync.Map) *PriceTable {
+func NewPriceTable(initprice int64, nodeName string, callmap sync.Map) *PriceTable {
 	return &PriceTable{
 		initprice: initprice,
+		nodename:  nodeName,
 		cmap:      callmap,
 		ptmap:     sync.Map{},
 		// locker:     locker,
@@ -60,7 +62,7 @@ func (t *PriceTable) Limit(ctx context.Context, tokens int64) (int64, int64, err
 
 	ownPrice_string, _ := t.ptmap.LoadOrStore("ownprice", t.initprice)
 	ownPrice := ownPrice_string.(int64)
-	downstreamPrice_string, _ := t.ptmap.LoadOrStore("/greeting.v3.GreetingService/Greeting", t.initprice)
+	downstreamPrice_string, _ := t.ptmap.LoadOrStore("/greeting.v3.GreetingService/Greeting", int64(0))
 	downstreamPrice := downstreamPrice_string.(int64)
 	totalPrice_string, _ := t.ptmap.LoadOrStore("totalprice", t.initprice)
 	totalPrice := totalPrice_string.(int64)
@@ -113,9 +115,10 @@ func (t *PriceTable) Include(ctx context.Context, method string, downstreamPrice
 func (PriceTableInstance *PriceTable) UnaryInterceptorClient(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 
 	// Jiali: the following line print the method name of the req/response, will be used to update the
-	logger("[Before Req]:	The method name for price table is ")
-	logger(method)
+	// logger("[Before Req]:	The method name for price table is ")
+	// logger(method)
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
+	ctx = metadata.AppendToOutgoingContext(ctx, "name", PriceTableInstance.nodename)
 	var header metadata.MD // variable to store header and trailer
 	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
 	if err != nil {
@@ -129,20 +132,22 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorClient(ctx context.Context
 		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
 		PriceTableInstance.Include(ctx, method, priceDownstream)
 	}
+
+	logger("[After Resp]:	The price table is from %s\n", header["name"])
 	return err
 }
 
 // unaryInterceptor is an example unary interceptor.
 func (PriceTableInstance *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 
-	logger("[Before Req]:	The method name for price table is ")
-	logger(method)
+	// logger("[Before Req]:	The method name for price table is ")
+	// logger(method)
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
 
 	rand.Seed(time.Now().UnixNano())
 	tok := rand.Intn(10) + 100
 	tok_string := strconv.Itoa(tok)
-	ctx = metadata.AppendToOutgoingContext(ctx, "tokens", tok_string)
+	ctx = metadata.AppendToOutgoingContext(ctx, "tokens", tok_string, "name", PriceTableInstance.nodename)
 
 	var header metadata.MD // variable to store header and trailer
 	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
@@ -157,6 +162,8 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorEnduser(ctx context.Contex
 		PriceTableInstance.Include(ctx, method, priceDownstream)
 	}
 	// Jiali: after replied. update and store the price info for future
+
+	logger("[After Resp]:	The price table is from %s\n", header["name"])
 	return err
 }
 
@@ -182,8 +189,8 @@ func (PriceTableInstance *PriceTable) UnaryInterceptor(ctx context.Context, req 
 	}
 
 	// getMethodInfo(ctx)
-	logger("[Received Req]:	The method name for request is ")
-	logger(info.FullMethod)
+	logger("[Received Req]:	The sender's name for request is %s\n", md["name"])
+	// logger(info.FullMethod)
 
 	logger("[Received Req]:	tokens are %s\n", md["tokens"])
 	// Jiali: overload handler, do AQM, deduct the tokens on the request, update price info
@@ -203,7 +210,7 @@ func (PriceTableInstance *PriceTable) UnaryInterceptor(ctx context.Context, req 
 	// Attach the price info to response before sending
 	// right now let's just propagate the corresponding price of the RPC method rather than a whole pricetable.
 	price_string := strconv.FormatInt(totalprice, 10)
-	header := metadata.Pairs("price", price_string)
+	header := metadata.Pairs("price", price_string, "name", PriceTableInstance.nodename)
 	logger("[Preparing Resp]:	Total price is %s\n", price_string)
 	grpc.SendHeader(ctx, header)
 

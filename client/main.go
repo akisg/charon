@@ -121,6 +121,7 @@ func main() {
 	const initialPrice = 0
 	priceTable := charon.NewPriceTable(
 		initialPrice,
+		"client",
 		sync.Map{},
 	)
 

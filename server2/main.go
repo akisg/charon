@@ -107,6 +107,7 @@ func (s *server) UnaryEcho(ctx context.Context, in *pb.EchoRequest) (*pb.EchoRes
 	fmt.Printf("unary echoing message at server 2 %q\n", in.Message)
 	// [critical] to pass ctx from upstream to downstream
 	// This function is called when the middle tier service behave as a client and dials the downstream nodes.
+	time.Sleep(time.Millisecond * 400) // example code to sleep for 500 milliseconds
 	callUnaryEcho(ctx, s.rgc, in.Message)
 	return &pb.EchoResponse{Message: in.Message}, nil
 }
@@ -177,6 +178,7 @@ func main() {
 	const initialPrice = 2
 	priceTable := charon.NewPriceTable(
 		initialPrice,
+		"frontend",
 		sync.Map{},
 	)
 	s := grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(priceTable.UnaryInterceptor), grpc.StreamInterceptor(streamInterceptor))
