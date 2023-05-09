@@ -176,10 +176,12 @@ func main() {
 	}
 
 	const initialPrice = 2
+	callGraph := sync.Map{}
+	callGraph.Store("echo", "backend")
 	priceTable := charon.NewPriceTable(
 		initialPrice,
 		"frontend",
-		sync.Map{},
+		callGraph,
 	)
 	s := grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(priceTable.UnaryInterceptor), grpc.StreamInterceptor(streamInterceptor))
 

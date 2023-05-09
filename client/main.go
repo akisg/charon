@@ -21,6 +21,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -77,11 +78,26 @@ func streamInterceptor(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.Clie
 func callUnaryEcho(client ecpb.EchoClient, message string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	resp, err := client.UnaryEcho(ctx, &ecpb.EchoRequest{Message: message})
-	if err != nil {
-		log.Fatalf("client.UnaryEcho(_) = _, %v: ", err)
+	fmt.Println("About to send msg: ", message)
+	for retry := 0; retry < 5; retry++ {
+		resp, err := client.UnaryEcho(ctx, &ecpb.EchoRequest{Message: message})
+
+		if errors.Is(err, charon.RateLimited) {
+			// Handle rate-limited error
+			fmt.Println("Rate limit triggered. Try again later.")
+			time.Sleep(time.Second) // Sleep for a sec before retrying
+		} else if errors.Is(err, charon.InsufficientTokens) {
+			// Handle dropped request error
+			fmt.Println("Req dropped. Try again later.")
+			break // Break out of the loop on non-rate-limited errors
+		} else if err != nil {
+			log.Fatalf("client.UnaryEcho(_) = _, %v: ", err)
+			break // Break out of the loop on non-rate-limited errors
+		} else {
+			fmt.Println("UnaryEcho: ", resp.Message)
+			break // Break out of the loop on non-rate-limited errors
+		}
 	}
-	fmt.Println("UnaryEcho: ", resp.Message)
 }
 
 func callBidiStreamingEcho(client ecpb.EchoClient) {
@@ -119,10 +135,12 @@ func main() {
 	}
 
 	const initialPrice = 0
+	callGraph := sync.Map{}
+	callGraph.Store("echo", "frontend")
 	priceTable := charon.NewPriceTable(
 		initialPrice,
 		"client",
-		sync.Map{},
+		callGraph,
 	)
 
 	// Set up a connection to the server.
@@ -135,6 +153,8 @@ func main() {
 
 	// Make a echo client and send RPCs.
 	rgc := ecpb.NewEchoClient(conn)
-	callUnaryEcho(rgc, "hello world")
+	callUnaryEcho(rgc, "First msg")
+	callUnaryEcho(rgc, "Second msg")
+	callUnaryEcho(rgc, "Final msg")
 	//callBidiStreamingEcho(rgc)
 }
