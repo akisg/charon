@@ -19,8 +19,9 @@ import (
 )
 
 var (
-	// ErrLimitExhausted is returned by the Limiter in case the number of requests overflows the capacity of a Limiter.
-	ErrLimitExhausted = errors.New("requests limit exhausted")
+	// InsufficientTokens is returned by the Limiter in case the number of requests overflows the capacity of a Limiter.
+	InsufficientTokens = errors.New("Received insufficient tokens, trigger load shedding.")
+	RateLimited        = errors.New("Insufficient tokens to send, trigger rate limit.")
 )
 
 // PriceTable implements the Charon price table
@@ -54,15 +55,32 @@ func NewPriceTable(initprice int64, nodeName string, callmap sync.Map) *PriceTab
 	}
 }
 
-// Limit takes tokens from the request according to the price table,
+// RateLimiting is for the end user (human client) to check the price and ratelimit their calls when tokens < prices.
+func (t *PriceTable) RateLimiting(ctx context.Context, tokens int64) error {
+	downstreamName, _ := t.cmap.Load("echo")
+	servicePrice_string, _ := t.ptmap.LoadOrStore(downstreamName, t.initprice)
+	servicePrice := servicePrice_string.(int64)
+	// var extratoken int64
+	extratoken := tokens - servicePrice
+	logger("[Ratelimiting]: Checking Request. Token is %d, %s price is %d\n", tokens, downstreamName, servicePrice)
+
+	if extratoken < 0 {
+		logger("[Prepare Req]: Request blocked for lack of tokens.")
+		return RateLimited
+	}
+	return nil
+}
+
+// LoadShading takes tokens from the request according to the price table,
 // then it updates the price table according to the tokens on the req.
 // It returns #token left, total price, and a nil error if the request has sufficient amount of tokens.
 // It returns ErrLimitExhausted if the amount of available tokens is less than requested.
-func (t *PriceTable) Limit(ctx context.Context, tokens int64) (int64, int64, error) {
+func (t *PriceTable) LoadShading(ctx context.Context, tokens int64) (int64, error) {
 
 	ownPrice_string, _ := t.ptmap.LoadOrStore("ownprice", t.initprice)
 	ownPrice := ownPrice_string.(int64)
-	downstreamPrice_string, _ := t.ptmap.LoadOrStore("/greeting.v3.GreetingService/Greeting", int64(0))
+	downstreamName, _ := t.cmap.Load("echo")
+	downstreamPrice_string, _ := t.ptmap.LoadOrStore(downstreamName, int64(0))
 	downstreamPrice := downstreamPrice_string.(int64)
 	totalPrice_string, _ := t.ptmap.LoadOrStore("totalprice", t.initprice)
 	totalPrice := totalPrice_string.(int64)
@@ -78,7 +96,8 @@ func (t *PriceTable) Limit(ctx context.Context, tokens int64) (int64, int64, err
 		}
 		t.ptmap.Store("ownprice", ownPrice)
 		totalPrice = ownPrice + downstreamPrice
-		return 0, totalPrice, ErrLimitExhausted
+		t.ptmap.Store("totalprice", totalPrice)
+		return 0, InsufficientTokens
 	}
 
 	// Take the tokens from the req.
@@ -93,22 +112,23 @@ func (t *PriceTable) Limit(ctx context.Context, tokens int64) (int64, int64, err
 
 	t.ptmap.Store("ownprice", ownPrice)
 	totalPrice = ownPrice + downstreamPrice
-	return tokenleft, totalPrice, nil
+	t.ptmap.Store("totalprice", totalPrice)
+	return tokenleft, nil
 }
 
-// Include incorperates (add to own price, so far) the downstream price table to its own price table.
-func (t *PriceTable) Include(ctx context.Context, method string, downstreamPrice int64) (int64, error) {
+// UpdatePrice incorperates (add to own price, so far) the downstream price table to its own price table.
+func (t *PriceTable) UpdatePrice(ctx context.Context, method string, downstreamPrice int64) (int64, error) {
 
 	// Update the downstream price.
 	t.ptmap.Store(method, downstreamPrice)
-	logger("[Received Resp]:	Downstream price updated to %d\n", downstreamPrice)
+	logger("[Received Resp]:	Downstream price of %s updated to %d\n", method, downstreamPrice)
 
-	var totalprice int64
-	ownprice, _ := t.ptmap.LoadOrStore("ownprice", t.initprice)
-	totalprice = ownprice.(int64) + downstreamPrice
-	t.ptmap.Store("totalprice", totalprice)
-	logger("[Received Resp]:	Total price updated to %d\n", totalprice)
-	return totalprice, nil
+	var totalPrice int64
+	ownPrice, _ := t.ptmap.LoadOrStore("ownprice", t.initprice)
+	totalPrice = ownPrice.(int64) + downstreamPrice
+	t.ptmap.Store("totalprice", totalPrice)
+	logger("[Received Resp]:	Total price updated to %d\n", totalPrice)
+	return totalPrice, nil
 }
 
 // unaryInterceptor is an example unary interceptor.
@@ -130,7 +150,7 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorClient(ctx context.Context
 	// Jiali: after replied. update and store the price info for future
 	if len(header["price"]) > 0 {
 		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
-		PriceTableInstance.Include(ctx, method, priceDownstream)
+		PriceTableInstance.UpdatePrice(ctx, header["name"][0], priceDownstream)
 	}
 
 	logger("[After Resp]:	The price table is from %s\n", header["name"])
@@ -142,11 +162,17 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorEnduser(ctx context.Contex
 
 	// logger("[Before Req]:	The method name for price table is ")
 	// logger(method)
-	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
 
 	rand.Seed(time.Now().UnixNano())
-	tok := rand.Intn(10) + 100
+	tok := rand.Intn(10)
 	tok_string := strconv.Itoa(tok)
+
+	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
+	ratelimit := PriceTableInstance.RateLimiting(ctx, int64(tok))
+	if ratelimit != nil {
+		return ratelimit
+	}
+
 	ctx = metadata.AppendToOutgoingContext(ctx, "tokens", tok_string, "name", PriceTableInstance.nodename)
 
 	var header metadata.MD // variable to store header and trailer
@@ -159,7 +185,7 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorEnduser(ctx context.Contex
 	// Jiali: after replied. update and store the price info for future
 	if len(header["price"]) > 0 {
 		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
-		PriceTableInstance.Include(ctx, method, priceDownstream)
+		PriceTableInstance.UpdatePrice(ctx, header["name"][0], priceDownstream)
 	}
 	// Jiali: after replied. update and store the price info for future
 
@@ -198,21 +224,14 @@ func (PriceTableInstance *PriceTable) UnaryInterceptor(ctx context.Context, req 
 	tok, err := strconv.ParseInt(md["tokens"][0], 10, 64)
 
 	// overload handler:
-	tokenleft, totalprice, err := PriceTableInstance.Limit(ctx, tok)
-	if err == ErrLimitExhausted {
-		return nil, status.Errorf(codes.ResourceExhausted, "try again later")
+	tokenleft, err := PriceTableInstance.LoadShading(ctx, tok)
+	if err == InsufficientTokens {
+		return nil, status.Errorf(codes.ResourceExhausted, "req dropped, try again later")
 	} else if err != nil {
 		// The limiter failed. This error should be logged and examined.
 		log.Println(err)
 		return nil, status.Error(codes.Internal, "internal error")
 	}
-
-	// Attach the price info to response before sending
-	// right now let's just propagate the corresponding price of the RPC method rather than a whole pricetable.
-	price_string := strconv.FormatInt(totalprice, 10)
-	header := metadata.Pairs("price", price_string, "name", PriceTableInstance.nodename)
-	logger("[Preparing Resp]:	Total price is %s\n", price_string)
-	grpc.SendHeader(ctx, header)
 
 	tok_string := strconv.FormatInt(tokenleft, 10)
 	// [critical] Jiali: Being outgoing seems to be critical for us.
@@ -224,6 +243,15 @@ func (PriceTableInstance *PriceTable) UnaryInterceptor(ctx context.Context, req 
 	start := time.Now()
 
 	m, err := handler(ctx, req)
+
+	// Attach the price info to response before sending
+	// right now let's just propagate the corresponding price of the RPC method rather than a whole pricetable.
+	totalPrice_string, _ := PriceTableInstance.ptmap.Load("totalprice")
+	// totalPrice := totalPrice_string.(int64)
+	price_string := strconv.FormatInt(totalPrice_string.(int64), 10)
+	header := metadata.Pairs("price", price_string, "name", PriceTableInstance.nodename)
+	logger("[Preparing Resp]:	Total price is %s\n", price_string)
+	grpc.SendHeader(ctx, header)
 
 	duration := time.Since(start).Milliseconds()
 	fmt.Printf("[Server-side Timer] Processing Duration is: %.2d milliseconds\n", duration)
