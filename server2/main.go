@@ -177,7 +177,8 @@ func main() {
 
 	const initialPrice = 2
 	callGraph := sync.Map{}
-	callGraph.Store("echo", "backend")
+	downstreams := []string{"backend"}
+	callGraph.Store("echo", downstreams)
 	priceTable := charon.NewPriceTable(
 		initialPrice,
 		"frontend",
