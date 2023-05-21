@@ -86,6 +86,15 @@ func (t *PriceTable) RetrievePrice(ctx context.Context, methodName string) (int6
 	return downstreamPriceSum, nil
 }
 
+func (t *PriceTable) RetrieveTotalPrice(ctx context.Context, methodName string) (string, error) {
+	ownPrice_string, _ := t.ptmap.LoadOrStore("ownprice", t.initprice)
+	ownPrice := ownPrice_string.(int64)
+	downstreamPrice, _ := t.RetrievePrice(ctx, methodName)
+	totalPrice := ownPrice + downstreamPrice
+	price_string := strconv.FormatInt(totalPrice, 10)
+	return price_string, nil
+}
+
 // LoadShading takes tokens from the request according to the price table,
 // then it updates the price table according to the tokens on the req.
 // It returns #token left, total price, and a nil error if the request has sufficient amount of tokens.
@@ -131,6 +140,26 @@ func (t *PriceTable) LoadShading(ctx context.Context, tokens int64) (int64, erro
 	// totalPrice = ownPrice + downstreamPrice
 	// t.ptmap.Store("totalprice", totalPrice)
 	return tokenleft, nil
+}
+
+// SplitTokens splits the tokens left on the request to the downstream services.
+// It returns a map, with the downstream service names as keys, and tokens left for them as values.
+func (t *PriceTable) SplitTokens(ctx context.Context, tokenleft int64) ([]string, error) {
+	downstreamNames, _ := t.cmap.Load("echo")
+	downstreamTokens := []string{}
+
+	if downstreamNamesSlice, ok := downstreamNames.([]string); ok {
+		size := len(downstreamNamesSlice)
+		tokenleftPerDownstream := tokenleft / int64(size)
+		for _, downstreamName := range downstreamNamesSlice {
+			downstreamPriceString, _ := t.ptmap.LoadOrStore(downstreamName, int64(0))
+			downstreamPrice := downstreamPriceString.(int64)
+			downstreamToken := tokenleftPerDownstream + downstreamPrice
+			downstreamTokens = append(downstreamTokens, "tokens-"+downstreamName, strconv.FormatInt(downstreamToken, 10))
+		}
+	}
+
+	return downstreamTokens, nil
 }
 
 // UpdatePrice incorperates (add to own price, so far) the downstream price table to its own price table.
@@ -235,10 +264,19 @@ func (PriceTableInstance *PriceTable) UnaryInterceptor(ctx context.Context, req 
 	logger("[Received Req]:	The sender's name for request is %s\n", md["name"])
 	// logger(info.FullMethod)
 
-	logger("[Received Req]:	tokens are %s\n", md["tokens"])
 	// Jiali: overload handler, do AQM, deduct the tokens on the request, update price info
+	// logger("[Received Req]:	tokens are %s\n", md["tokens"])
+	// tok, err := strconv.ParseInt(md["tokens"][0], 10, 64)
+	var tok int64
+	var err error
 
-	tok, err := strconv.ParseInt(md["tokens"][0], 10, 64)
+	if val, ok := md["tokens-"+PriceTableInstance.nodename]; ok {
+		logger("[Received Req]:	tokens for %s are %s\n", PriceTableInstance.nodename, val)
+		tok, err = strconv.ParseInt(val[0], 10, 64)
+	} else {
+		logger("[Received Req]:	tokens are %s\n", md["tokens"])
+		tok, err = strconv.ParseInt(md["tokens"][0], 10, 64)
+	}
 
 	// overload handler:
 	tokenleft, err := PriceTableInstance.LoadShading(ctx, tok)
@@ -252,7 +290,12 @@ func (PriceTableInstance *PriceTable) UnaryInterceptor(ctx context.Context, req 
 
 	tok_string := strconv.FormatInt(tokenleft, 10)
 	// [critical] Jiali: Being outgoing seems to be critical for us.
-	ctx = metadata.AppendToOutgoingContext(ctx, "tokens", tok_string)
+	// Jiali: we need to attach the token info to the context, so that the downstream can retrieve it.
+	// ctx = metadata.AppendToOutgoingContext(ctx, "tokens", tok_string)
+	// Jiali: we actually need multiple kv pairs for the token information, because one context is sent to multiple downstreams.
+	downstreamTokens, _ := PriceTableInstance.SplitTokens(ctx, tokenleft)
+	ctx = metadata.AppendToOutgoingContext(ctx, downstreamTokens...)
+
 	// ctx = metadata.NewOutgoingContext(ctx, md)
 
 	logger("[Preparing Sub Req]:	Token left is %s\n", tok_string)
@@ -264,14 +307,8 @@ func (PriceTableInstance *PriceTable) UnaryInterceptor(ctx context.Context, req 
 	// Attach the price info to response before sending
 	// right now let's just propagate the corresponding price of the RPC method rather than a whole pricetable.
 	// totalPrice_string, _ := PriceTableInstance.ptmap.Load("totalprice")
-	ownPrice_string, _ := PriceTableInstance.ptmap.LoadOrStore("ownprice", PriceTableInstance.initprice)
-	ownPrice := ownPrice_string.(int64)
-	downstreamPrice, _ := PriceTableInstance.RetrievePrice(ctx, "echo")
-	totalPrice := ownPrice + downstreamPrice
-	// totalPrice, _ := PriceTableInstance.RetrievePrice(ctx, "echo")
-	price_string := strconv.FormatInt(totalPrice, 10)
-	// totalPrice := totalPrice_string.(int64)
-	// price_string := strconv.FormatInt(totalPrice_string.(int64), 10)
+	price_string, _ := PriceTableInstance.RetrieveTotalPrice(ctx, "echo")
+
 	header := metadata.Pairs("price", price_string, "name", PriceTableInstance.nodename)
 	logger("[Preparing Resp]:	Total price is %s\n", price_string)
 	grpc.SendHeader(ctx, header)
