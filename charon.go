@@ -151,14 +151,15 @@ func (t *PriceTable) SplitTokens(ctx context.Context, tokenleft int64) ([]string
 	if downstreamNamesSlice, ok := downstreamNames.([]string); ok {
 		size := len(downstreamNamesSlice)
 		tokenleftPerDownstream := tokenleft / int64(size)
+		logger("[Split tokens]:	extra token left for each ds is %d\n", tokenleftPerDownstream)
 		for _, downstreamName := range downstreamNamesSlice {
 			downstreamPriceString, _ := t.ptmap.LoadOrStore(downstreamName, int64(0))
 			downstreamPrice := downstreamPriceString.(int64)
 			downstreamToken := tokenleftPerDownstream + downstreamPrice
 			downstreamTokens = append(downstreamTokens, "tokens-"+downstreamName, strconv.FormatInt(downstreamToken, 10))
+			logger("[Split tokens]:	token for %s is %d + %d\n", downstreamName, tokenleftPerDownstream, downstreamPrice)
 		}
 	}
-
 	return downstreamTokens, nil
 }
 
