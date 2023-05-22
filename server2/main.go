@@ -25,10 +25,9 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"sync"
 	"time"
 
-	"github.com/tgiannoukos/charon"
+	bw "github.com/tgiannoukos/charon/breakwater"
 
 	"errors"
 
@@ -161,6 +160,51 @@ func streamInterceptor(srv interface{}, ss grpc.ServerStream, info *grpc.StreamS
 }
 
 func main() {
+	// flag.Parse()
+
+	// lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
+	// if err != nil {
+	// 	fmt.Printf("failed to listen: %v", err)
+	// }
+
+	// // Create tls based credential.
+	// creds, err := credentials.NewServerTLSFromFile(data.Path("x509/server_cert.pem"), data.Path("x509/server_key.pem"))
+	// if err != nil {
+	// 	fmt.Printf("failed to create credentials: %v", err)
+	// }
+
+	// const initialPrice = 2
+	// priceTable := charon.NewPriceTable(
+	// 	initialPrice,
+	// 	sync.Map{},
+	// )
+	// s := grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(priceTable.UnaryInterceptor), grpc.StreamInterceptor(streamInterceptor))
+
+	// creds_client, err_client := credentials.NewClientTLSFromFile(data.Path("x509/ca_cert.pem"), "x.test.example.com")
+	// if err_client != nil {
+	// 	fmt.Printf("failed to load credentials: %v", err_client)
+	// }
+
+	// // Set up a connection to the downstream server, but with the client-side interceptor on top of priceTable.
+	// conn, err := grpc.Dial(*addr, grpc.WithTransportCredentials(creds_client),
+	// 	grpc.WithUnaryInterceptor(priceTable.UnaryInterceptorClient))
+	// if err != nil {
+	// 	fmt.Printf("did not connect: %v", err)
+	// }
+
+	// // Make a echo client rgc and send RPCs.
+	// // Register EchoServer on the server.
+	// pb.RegisterEchoServer(s, &server{rgc: ecpb.NewEchoClient(conn)})
+
+	// if err := s.Serve(lis); err != nil {
+	// 	fmt.Printf("failed to serve: %v", err)
+	// }
+
+	RunBreakwater()
+
+}
+
+func RunBreakwater() {
 	flag.Parse()
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
@@ -174,21 +218,18 @@ func main() {
 		fmt.Printf("failed to create credentials: %v", err)
 	}
 
-	const initialPrice = 2
-	priceTable := charon.NewPriceTable(
-		initialPrice,
-		sync.Map{},
-	)
-	s := grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(priceTable.UnaryInterceptor), grpc.StreamInterceptor(streamInterceptor))
+	breakwater := bw.InitBreakwater(0.001, 0.02, 160)
+
+	s := grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(breakwater.UnaryInterceptor), grpc.StreamInterceptor(streamInterceptor))
 
 	creds_client, err_client := credentials.NewClientTLSFromFile(data.Path("x509/ca_cert.pem"), "x.test.example.com")
 	if err_client != nil {
 		fmt.Printf("failed to load credentials: %v", err_client)
 	}
 
-	// Set up a connection to the downstream server, but with the client-side interceptor on top of priceTable.
+	// Set up a connection to the downstream server, but with the client-side interceptor on top of breakWater.
 	conn, err := grpc.Dial(*addr, grpc.WithTransportCredentials(creds_client),
-		grpc.WithUnaryInterceptor(priceTable.UnaryInterceptorClient))
+		grpc.WithUnaryInterceptor(breakwater.UnaryInterceptorClient))
 	if err != nil {
 		fmt.Printf("did not connect: %v", err)
 	}
@@ -200,5 +241,4 @@ func main() {
 	if err := s.Serve(lis); err != nil {
 		fmt.Printf("failed to serve: %v", err)
 	}
-
 }

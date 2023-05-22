@@ -25,11 +25,9 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"sync"
 	"time"
 
-	"github.com/tgiannoukos/charon"
-
+	bw "github.com/tgiannoukos/charon/breakwater"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/examples/data"
@@ -110,6 +108,36 @@ func callBidiStreamingEcho(client ecpb.EchoClient) {
 }
 
 func main() {
+	// flag.Parse()
+
+	// // Create tls based credential.
+	// creds, err := credentials.NewClientTLSFromFile(data.Path("x509/ca_cert.pem"), "x.test.example.com")
+	// if err != nil {
+	// 	log.Fatalf("failed to load credentials: %v", err)
+	// }
+
+	// const initialPrice = 0
+	// priceTable := charon.NewPriceTable(
+	// 	initialPrice,
+	// 	sync.Map{},
+	// )
+
+	// // Set up a connection to the server.
+	// conn, err := grpc.Dial(*addr, grpc.WithTransportCredentials(creds),
+	// 	grpc.WithUnaryInterceptor(priceTable.UnaryInterceptorEnduser), grpc.WithStreamInterceptor(streamInterceptor))
+	// if err != nil {
+	// 	log.Fatalf("did not connect: %v", err)
+	// }
+	// defer conn.Close()
+
+	// // Make a echo client and send RPCs.
+	// rgc := ecpb.NewEchoClient(conn)
+	// callUnaryEcho(rgc, "hello world")
+	// //callBidiStreamingEcho(rgc)
+	RunBreakwater()
+}
+
+func RunBreakwater() {
 	flag.Parse()
 
 	// Create tls based credential.
@@ -118,15 +146,11 @@ func main() {
 		log.Fatalf("failed to load credentials: %v", err)
 	}
 
-	const initialPrice = 0
-	priceTable := charon.NewPriceTable(
-		initialPrice,
-		sync.Map{},
-	)
+	breakwater := bw.InitBreakwater(0.001, 0.02, 160)
 
 	// Set up a connection to the server.
 	conn, err := grpc.Dial(*addr, grpc.WithTransportCredentials(creds),
-		grpc.WithUnaryInterceptor(priceTable.UnaryInterceptorEnduser), grpc.WithStreamInterceptor(streamInterceptor))
+		grpc.WithUnaryInterceptor(breakwater.UnaryInterceptorClient), grpc.WithStreamInterceptor(streamInterceptor))
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}
@@ -134,6 +158,8 @@ func main() {
 
 	// Make a echo client and send RPCs.
 	rgc := ecpb.NewEchoClient(conn)
-	callUnaryEcho(rgc, "hello world")
-	//callBidiStreamingEcho(rgc)
+	callUnaryEcho(rgc, "hello world1")
+	callUnaryEcho(rgc, "hello world2")
+	callUnaryEcho(rgc, "hello world3")
+
 }

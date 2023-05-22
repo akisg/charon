@@ -145,6 +145,31 @@ func streamInterceptor(srv interface{}, ss grpc.ServerStream, info *grpc.StreamS
 }
 
 func main() {
+	// flag.Parse()
+
+	// lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
+	// if err != nil {
+	// 	log.Fatalf("failed to listen: %v", err)
+	// }
+
+	// // Create tls based credential.
+	// creds, err := credentials.NewServerTLSFromFile(data.Path("x509/server_cert.pem"), data.Path("x509/server_key.pem"))
+	// if err != nil {
+	// 	log.Fatalf("failed to create credentials: %v", err)
+	// }
+
+	// s := grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(unaryInterceptor), grpc.StreamInterceptor(streamInterceptor))
+
+	// // Register EchoServer on the server.
+	// pb.RegisterEchoServer(s, &server{})
+
+	// if err := s.Serve(lis); err != nil {
+	// 	log.Fatalf("failed to serve: %v", err)
+	// }
+	RunBreakwater()
+}
+
+func RunBreakwater() {
 	flag.Parse()
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))

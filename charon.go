@@ -226,7 +226,7 @@ func (PriceTableInstance *PriceTable) UnaryInterceptor(ctx context.Context, req 
 	// Attach the price info to response before sending
 	// right now let's just propagate the corresponding price of the RPC method rather than a whole pricetable.
 	price_string := strconv.FormatInt(totalprice, 10)
-	header := metadata.Pairs("price", price_string)
+	header := metadata.Pairs("price", "100", "time", "1000")
 	logger("[Preparing Resp]:	Total price is %s\n", price_string)
 	grpc.SendHeader(ctx, header)
 

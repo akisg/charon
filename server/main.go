@@ -25,19 +25,16 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"sync"
 	"time"
 
-	"github.com/tgiannoukos/charon"
-
+	bw "github.com/tgiannoukos/charon/breakwater"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/examples/data"
+	pb "google.golang.org/grpc/examples/features/proto/echo"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
-
-	pb "google.golang.org/grpc/examples/features/proto/echo"
 )
 
 var (
@@ -110,6 +107,37 @@ func streamInterceptor(srv interface{}, ss grpc.ServerStream, info *grpc.StreamS
 }
 
 func main() {
+	// flag.Parse()
+
+	// lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
+	// if err != nil {
+	// 	fmt.Printf("failed to listen: %v", err)
+	// }
+
+	// // Create tls based credential.
+	// creds, err := credentials.NewServerTLSFromFile(data.Path("x509/server_cert.pem"), data.Path("x509/server_key.pem"))
+	// if err != nil {
+	// 	fmt.Printf("failed to create credentials: %v", err)
+	// }
+
+	// const initialPrice = 2
+	// priceTable := charon.NewPriceTable(
+	// 	initialPrice,
+	// 	sync.Map{},
+	// )
+
+	// s := grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(priceTable.UnaryInterceptor), grpc.StreamInterceptor(streamInterceptor))
+
+	// // Register EchoServer on the server.
+	// pb.RegisterEchoServer(s, &server{})
+
+	// if err := s.Serve(lis); err != nil {
+	// 	fmt.Printf("failed to serve: %v", err)
+	// }
+	RunBreakwater()
+}
+
+func RunBreakwater() {
 	flag.Parse()
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
@@ -123,13 +151,9 @@ func main() {
 		fmt.Printf("failed to create credentials: %v", err)
 	}
 
-	const initialPrice = 2
-	priceTable := charon.NewPriceTable(
-		initialPrice,
-		sync.Map{},
-	)
+	breakwater := bw.InitBreakwater(0.001, 0.02, 160)
 
-	s := grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(priceTable.UnaryInterceptor), grpc.StreamInterceptor(streamInterceptor))
+	s := grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(breakwater.UnaryInterceptor), grpc.StreamInterceptor(streamInterceptor))
 
 	// Register EchoServer on the server.
 	pb.RegisterEchoServer(s, &server{})
