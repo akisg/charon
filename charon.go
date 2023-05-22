@@ -56,8 +56,8 @@ func NewPriceTable(initprice int64, nodeName string, callmap sync.Map) *PriceTab
 }
 
 // RateLimiting is for the end user (human client) to check the price and ratelimit their calls when tokens < prices.
-func (t *PriceTable) RateLimiting(ctx context.Context, tokens int64) error {
-	downstreamName, _ := t.cmap.Load("echo")
+func (t *PriceTable) RateLimiting(ctx context.Context, tokens int64, methodName string) error {
+	downstreamName, _ := t.cmap.Load(methodName)
 	servicePrice_string, _ := t.ptmap.LoadOrStore(downstreamName, t.initprice)
 	servicePrice := servicePrice_string.(int64)
 	// var extratoken int64
@@ -97,13 +97,12 @@ func (t *PriceTable) RetrieveTotalPrice(ctx context.Context, methodName string) 
 
 // LoadShading takes tokens from the request according to the price table,
 // then it updates the price table according to the tokens on the req.
-// It returns #token left, total price, and a nil error if the request has sufficient amount of tokens.
+// It returns #token left from ownprice, and a nil error if the request has sufficient amount of tokens.
 // It returns ErrLimitExhausted if the amount of available tokens is less than requested.
-func (t *PriceTable) LoadShading(ctx context.Context, tokens int64) (int64, error) {
-
+func (t *PriceTable) LoadShading(ctx context.Context, tokens int64, methodName string) (int64, error) {
 	ownPrice_string, _ := t.ptmap.LoadOrStore("ownprice", t.initprice)
 	ownPrice := ownPrice_string.(int64)
-	downstreamPrice, _ := t.RetrievePrice(ctx, "echo")
+	downstreamPrice, _ := t.RetrievePrice(ctx, methodName)
 	totalPrice := ownPrice + downstreamPrice
 	// downstreamName, _ := t.cmap.Load("echo")
 	// downstreamPrice_string, _ := t.ptmap.LoadOrStore(downstreamName, int64(0))
@@ -144,13 +143,14 @@ func (t *PriceTable) LoadShading(ctx context.Context, tokens int64) (int64, erro
 
 // SplitTokens splits the tokens left on the request to the downstream services.
 // It returns a map, with the downstream service names as keys, and tokens left for them as values.
-func (t *PriceTable) SplitTokens(ctx context.Context, tokenleft int64) ([]string, error) {
-	downstreamNames, _ := t.cmap.Load("echo")
+func (t *PriceTable) SplitTokens(ctx context.Context, tokenleft int64, methodName string) ([]string, error) {
+	downstreamNames, _ := t.cmap.Load(methodName)
 	downstreamTokens := []string{}
+	downstreamPriceSum, _ := t.RetrievePrice(ctx, methodName)
 
 	if downstreamNamesSlice, ok := downstreamNames.([]string); ok {
 		size := len(downstreamNamesSlice)
-		tokenleftPerDownstream := tokenleft / int64(size)
+		tokenleftPerDownstream := (tokenleft - downstreamPriceSum) / int64(size)
 		logger("[Split tokens]:	extra token left for each ds is %d\n", tokenleftPerDownstream)
 		for _, downstreamName := range downstreamNamesSlice {
 			downstreamPriceString, _ := t.ptmap.LoadOrStore(downstreamName, int64(0))
@@ -215,7 +215,7 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorEnduser(ctx context.Contex
 	tok_string := strconv.Itoa(tok)
 
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
-	ratelimit := PriceTableInstance.RateLimiting(ctx, int64(tok))
+	ratelimit := PriceTableInstance.RateLimiting(ctx, int64(tok), "echo")
 	if ratelimit != nil {
 		return ratelimit
 	}
@@ -280,7 +280,7 @@ func (PriceTableInstance *PriceTable) UnaryInterceptor(ctx context.Context, req 
 	}
 
 	// overload handler:
-	tokenleft, err := PriceTableInstance.LoadShading(ctx, tok)
+	tokenleft, err := PriceTableInstance.LoadShading(ctx, tok, "echo")
 	if err == InsufficientTokens {
 		return nil, status.Errorf(codes.ResourceExhausted, "req dropped, try again later")
 	} else if err != nil {
@@ -290,16 +290,16 @@ func (PriceTableInstance *PriceTable) UnaryInterceptor(ctx context.Context, req 
 	}
 
 	tok_string := strconv.FormatInt(tokenleft, 10)
+	logger("[Preparing Sub Req]:	Token left is %s\n", tok_string)
+
 	// [critical] Jiali: Being outgoing seems to be critical for us.
 	// Jiali: we need to attach the token info to the context, so that the downstream can retrieve it.
 	// ctx = metadata.AppendToOutgoingContext(ctx, "tokens", tok_string)
 	// Jiali: we actually need multiple kv pairs for the token information, because one context is sent to multiple downstreams.
-	downstreamTokens, _ := PriceTableInstance.SplitTokens(ctx, tokenleft)
+	downstreamTokens, _ := PriceTableInstance.SplitTokens(ctx, tokenleft, "echo")
 	ctx = metadata.AppendToOutgoingContext(ctx, downstreamTokens...)
 
 	// ctx = metadata.NewOutgoingContext(ctx, md)
-
-	logger("[Preparing Sub Req]:	Token left is %s\n", tok_string)
 
 	start := time.Now()
 
