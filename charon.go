@@ -71,7 +71,7 @@ func (t *PriceTable) RateLimiting(ctx context.Context, tokens int64, methodName 
 	return nil
 }
 
-func (t *PriceTable) RetrievePrice(ctx context.Context, methodName string) (int64, error) {
+func (t *PriceTable) RetrieveDSPrice(ctx context.Context, methodName string) (int64, error) {
 	downstreamNames, _ := t.cmap.Load(methodName)
 	var downstreamPriceSum int64
 	// var downstreamPrice int64
@@ -89,7 +89,7 @@ func (t *PriceTable) RetrievePrice(ctx context.Context, methodName string) (int6
 func (t *PriceTable) RetrieveTotalPrice(ctx context.Context, methodName string) (string, error) {
 	ownPrice_string, _ := t.ptmap.LoadOrStore("ownprice", t.initprice)
 	ownPrice := ownPrice_string.(int64)
-	downstreamPrice, _ := t.RetrievePrice(ctx, methodName)
+	downstreamPrice, _ := t.RetrieveDSPrice(ctx, methodName)
 	totalPrice := ownPrice + downstreamPrice
 	price_string := strconv.FormatInt(totalPrice, 10)
 	return price_string, nil
@@ -102,7 +102,7 @@ func (t *PriceTable) RetrieveTotalPrice(ctx context.Context, methodName string) 
 func (t *PriceTable) LoadShading(ctx context.Context, tokens int64, methodName string) (int64, error) {
 	ownPrice_string, _ := t.ptmap.LoadOrStore("ownprice", t.initprice)
 	ownPrice := ownPrice_string.(int64)
-	downstreamPrice, _ := t.RetrievePrice(ctx, methodName)
+	downstreamPrice, _ := t.RetrieveDSPrice(ctx, methodName)
 	totalPrice := ownPrice + downstreamPrice
 	// downstreamName, _ := t.cmap.Load("echo")
 	// downstreamPrice_string, _ := t.ptmap.LoadOrStore(downstreamName, int64(0))
@@ -146,7 +146,8 @@ func (t *PriceTable) LoadShading(ctx context.Context, tokens int64, methodName s
 func (t *PriceTable) SplitTokens(ctx context.Context, tokenleft int64, methodName string) ([]string, error) {
 	downstreamNames, _ := t.cmap.Load(methodName)
 	downstreamTokens := []string{}
-	downstreamPriceSum, _ := t.RetrievePrice(ctx, methodName)
+	downstreamPriceSum, _ := t.RetrieveDSPrice(ctx, methodName)
+	logger("[Split tokens]:	downstream total price is %d\n", downstreamPriceSum)
 
 	if downstreamNamesSlice, ok := downstreamNames.([]string); ok {
 		size := len(downstreamNamesSlice)
@@ -211,7 +212,7 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorEnduser(ctx context.Contex
 	// logger(method)
 
 	rand.Seed(time.Now().UnixNano())
-	tok := rand.Intn(10)
+	tok := rand.Intn(30)
 	tok_string := strconv.Itoa(tok)
 
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
