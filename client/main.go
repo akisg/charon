@@ -159,7 +159,7 @@ func RunBreakwater() {
 	// Make a echo client and send RPCs.
 	rgc := ecpb.NewEchoClient(conn)
 	callUnaryEcho(rgc, "hello world1")
-	callUnaryEcho(rgc, "hello world2")
-	callUnaryEcho(rgc, "hello world3")
+	// callUnaryEcho(rgc, "hello world2")
+	// callUnaryEcho(rgc, "hello world3")
 
 }

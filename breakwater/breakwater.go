@@ -27,7 +27,9 @@ TODO:
 - Store the number of credits in the channel, and decrement increment whenever done
 */
 
-// SERVER
+const RTTInMicrosecond = 5000        // RTT in milliseconds
+const TARGETPERCENTAGE float64 = 0.4 // target is 0.4 of SLA as per paper
+const STARTCREDITS int64 = 100       // start with 1000 credits
 
 var (
 	errMissingMetadata = status.Errorf(codes.InvalidArgument, "missing metadata")
@@ -66,40 +68,42 @@ type Connection struct {
 }
 
 type Breakwater struct {
-	clientMap       sync.Map
-	requestMap      sync.Map
-	lastUpdateTime  time.Time
-	numClients      int64
-	cTotal          int64
-	cIssued         int64
-	aFactor         float64
-	bFactor         float64
-	SLA             int64
-	greatestDelay   int64
-	id              uuid.UUID
-	pendingOutgoing chan int64
-	noCreditBlocker chan int64
-	outgoingCredits chan int64
+	clientMap         sync.Map
+	requestMap        sync.Map
+	lastUpdateTime    time.Time
+	numClients        int64
+	cTotal            int64
+	cIssued           int64
+	aFactor           float64
+	bFactor           float64
+	SLA               int64
+	currGreatestDelay int64
+	prevGreatestDelay int64
+	id                uuid.UUID
+	pendingOutgoing   chan int64
+	noCreditBlocker   chan int64
+	outgoingCredits   chan int64
 }
 
 // Todo: Add fields for gRPC contexts
 type request struct {
-	clientID       uuid.UUID
+	reqID          uuid.UUID
 	timeDeductions int64
 }
 
 func InitBreakwater(bFactor float64, aFactor float64, SLA int64) (bw *Breakwater) {
 	bw = &Breakwater{
-		clientMap:      sync.Map{},
-		lastUpdateTime: time.Now(),
-		numClients:     0,
-		cTotal:         0,
-		cIssued:        0,
-		bFactor:        bFactor,
-		aFactor:        aFactor,
-		SLA:            SLA,
-		greatestDelay:  0,
-		id:             uuid.New(),
+		clientMap:         sync.Map{},
+		lastUpdateTime:    time.Now(),
+		numClients:        0,
+		cTotal:            STARTCREDITS,
+		cIssued:           0,
+		bFactor:           bFactor,
+		aFactor:           aFactor,
+		SLA:               SLA,
+		currGreatestDelay: 0,
+		prevGreatestDelay: 0,
+		id:                uuid.New(),
 		// Outgoing buffer drops requests if > 50 requests in queue
 		pendingOutgoing: make(chan int64, 50),
 		noCreditBlocker: make(chan int64, 1),
@@ -117,12 +121,12 @@ Register a client if it is not already registered
 func (b *Breakwater) RegisterClient(id uuid.UUID, demand int64) (Connection, bool) {
 
 	var c *Connection = &Connection{
-		issued: 1,
+		issued: 0,
 		demand: demand,
 		id:     id,
 	}
 	storedConn, loaded := b.clientMap.LoadOrStore(id, *c)
-	if loaded {
+	if !loaded {
 		b.numClients++
 	}
 	return storedConn.(Connection), loaded
@@ -133,7 +137,7 @@ Helper to get current time delay
 TODO: Test time delay in nanoseconds
 */
 func (b *Breakwater) getDelay() int64 {
-	return b.greatestDelay
+	return max(b.currGreatestDelay, b.prevGreatestDelay)
 }
 
 /*
@@ -141,17 +145,31 @@ Every RTT, update cIssued for consistency and
 reset greatestDelay
 */
 func (b *Breakwater) rttUpdate() {
-	var totalIssued int64 = 0
-	b.clientMap.Range(func(key, value interface{}) bool {
-		totalIssued += value.(Connection).issued
-		return true
-	})
-	b.cIssued = totalIssued
-	b.greatestDelay = 0
+	timeSinceLastUpdate := time.Now().Sub(b.lastUpdateTime)
+	if timeSinceLastUpdate.Microseconds() > RTTInMicrosecond {
+		logger("[Updating credits]: Updating cTotal for this RTT")
+		b.lastUpdateTime = time.Now()
+
+		// Re-calculate total issued (should not be too expensive as # clients are limited)
+		var totalIssued int64 = 0
+		b.clientMap.Range(func(key, value interface{}) bool {
+			totalIssued += value.(Connection).issued
+			return true
+		})
+		b.cIssued = totalIssued
+
+		b.updateTotalCredits()
+
+		// Reset greatest delay
+		b.prevGreatestDelay = b.currGreatestDelay
+		b.currGreatestDelay = 0
+
+		logger("[Updating credits]: cTotal: %d, cIssued: %d", b.cTotal, b.cIssued)
+	}
 }
 
 /*
-Helper to get current demand (not exact, but gives a
+Helper to get current demand (not exact due to race conditions, but gives a
 fairly precise idea of number of outgoing requests in queue)
 */
 func (b *Breakwater) getDemand() (demand int) {
@@ -201,22 +219,24 @@ func (b *Breakwater) UnaryInterceptorClient(ctx context.Context, method string, 
 
 	// retrieve price table for downstream clients queueing delay
 	var isDownstream bool = false
-
+	var reqid uuid.UUID
 	timeStart := time.Now()
 	var reqTimeData request
 	md, ok := metadata.FromIncomingContext(ctx)
 	if ok && len(md["reqid"]) > 0 {
 		logger("[Before queue]:	is downstream request\n")
-		// TODO: Error handling
-		isDownstream = true
 		reqid, _ := uuid.Parse(md["reqid"][0])
-		r, _ := b.requestMap.Load(reqid)
-		reqTimeData = r.(request)
+		r, ok := b.requestMap.Load(reqid)
+		isDownstream = true
+		if ok {
+			reqTimeData = r.(request)
+		} else {
+			b.requestMap.Store(reqid, request{reqid, 0})
+		}
+	} else {
+		// This is first upstream client / end user
+		reqid = uuid.New()
 	}
-
-	// Get demand
-	demand := b.getDemand()
-	ctx = metadata.AppendToOutgoingContext(ctx, "demand", strconv.Itoa(demand), "id", b.id.String())
 
 	// Check if queue is too long
 	var added bool = b.queueRequest()
@@ -253,6 +273,11 @@ func (b *Breakwater) UnaryInterceptorClient(ctx context.Context, method string, 
 		// more credits
 	}
 
+	// Get demand
+	demand := b.getDemand()
+	logger("[Waiting in queue]:	demand is %d\n", demand)
+	ctx = metadata.AppendToOutgoingContext(ctx, "demand", strconv.Itoa(demand), "id", b.id.String(), "reqid", reqid.String())
+
 	// After breaking out of request loop, remove request from queue and send request
 	// This should never be blocked
 	logger("[Waiting in queue]:	Dequeueing and handling request\n")
@@ -269,6 +294,7 @@ func (b *Breakwater) UnaryInterceptorClient(ctx context.Context, method string, 
 	if len(header["credits"]) > 0 {
 		cXNew, _ := strconv.ParseInt(header["credits"][0], 10, 64)
 		logger("[Received Resp]:	Updated spend credits is %d\n", cXNew)
+		// fmt.Print("This is the header for okok lmao ", header["okok"][0])
 
 		// Update credits and unblock other requests
 		<-b.outgoingCredits
@@ -284,10 +310,10 @@ func (b *Breakwater) UnaryInterceptorClient(ctx context.Context, method string, 
 
 	// Update time deductions
 	timeEnd := time.Now()
-	timeElapsed := timeEnd.Sub(timeStart).Nanoseconds()
+	timeElapsed := timeEnd.Sub(timeStart).Microseconds()
 	if isDownstream {
 		reqTimeData.timeDeductions += timeElapsed
-		b.requestMap.Store(reqTimeData.clientID, reqTimeData)
+		b.requestMap.Store(reqTimeData.reqID, reqTimeData)
 		logger("[Received Resp]:	Downstream client - total time deduction %d\n", reqTimeData.timeDeductions)
 	}
 
@@ -308,9 +334,8 @@ Runs once every RTT
 */
 func (b *Breakwater) updateTotalCredits() {
 	delay := float64(b.getDelay())
-	// target is 0.4 of SLA as per paper
-	targetPercentage := 0.4
-	var target float64 = float64(b.SLA) * targetPercentage
+
+	var target float64 = float64(b.SLA) * TARGETPERCENTAGE
 
 	if delay < target {
 		addFactor := b.getAdditiveFactor()
@@ -320,7 +345,7 @@ func (b *Breakwater) updateTotalCredits() {
 		adjustingFactor := 1.0 - b.bFactor*((delay-target)/target)
 		adjustedTotal := int64(math.Round(float64(b.cTotal) * adjustingFactor))
 		b.cTotal = max(halfTotal, adjustedTotal)
-		// If cTotal is 0, set to 1
+		// If cTotal is 0, set to 1 (should have no need since on client side minimum credits is 1)
 		// b.cTotal = max(b.cTotal, 1)
 		// TODO: Is there need to send negative credits here? Breakwater is unclear
 		// But likely not
@@ -328,9 +353,9 @@ func (b *Breakwater) updateTotalCredits() {
 }
 
 /*
-Function: Update cX (credits issued to a connection)
+Function: Update credits issued to a connection
 Runs once every time a request is issued
-1. Retrieve demandX from metadata
+1. Retrieve demand from metadata
 2. Calculate cOC (the new overcommitment value, which is proportional to leftover, or 1)
 3. If cIssued < cTotal:
 Ideal to be issued is demandX + cOC, but limited by total available (cTotal - cIssued)
@@ -342,20 +367,31 @@ func (b *Breakwater) updateCreditsToIssue(clientID uuid.UUID, demand int64) (cNe
 	connection, _ := b.clientMap.Load(clientID)
 	c := connection.(Connection)
 	cOld := float64(c.issued)
+	fmt.Println("Old credits: ", cOld)
 	cOC := b.calculateCreditsOvercommitted()
+	fmt.Println("Credits overcommitted: ", cOC)
 
+	fmt.Println("total Issued credits: ", b.cIssued)
+	fmt.Println("total credits: ", b.cTotal)
+	fmt.Println("Num clients: ", b.numClients)
+
+	// Here, b.cIssued is OVERALL issued credits, while c.issued is credits issued to a connection
 	if b.cIssued < b.cTotal {
 		// There is still space to issue credits
 		cAvail := float64(b.cTotal - b.cIssued)
 		cNew = int64(math.Min(float64(demand+cOC), cOld+cAvail))
+		fmt.Println("there was available credits. cNew: ", cNew)
 	} else {
 		// At credit limit, so we only decrease
 		cNew = int64(math.Min(float64(demand+cOC), float64(cOld)-1))
+		fmt.Println("no available credits. cNew: ", cNew)
 	}
 	c.issued = cNew
+	// fmt.Println("Issued credits: ", cNew)
 	b.clientMap.Store(clientID, c)
 
 	b.cIssued = b.cIssued + (cNew - int64(cOld))
+	fmt.Println("new total issued credits: ", b.cIssued)
 	return
 }
 
@@ -382,53 +418,57 @@ func (b *Breakwater) UnaryInterceptor(ctx context.Context, req interface{}, info
 	// getMethodInfo(ctx)
 	logger("[Received Req]:	The method name for request is %s", info.FullMethod)
 
-	logger("[Received Req]:	demand is %s\n", md["demand"])
-	logger("[Received Req]:	clientid is %s\n", md["id"])
+	fmt.Println("Printing metadata: ", md)
 
 	demand, err1 := strconv.ParseInt(md["demand"][0], 10, 64)
+	clientId, err2 := uuid.Parse(md["id"][0])
+	reqId, err3 := uuid.Parse(md["reqid"][0])
 
-	id, err2 := uuid.Parse(md["id"][0])
-	if err1 != nil || err2 != nil {
+	if err1 != nil || err2 != nil || err3 != nil {
 		logger("[Received Req]:	Error: malformed metadata")
 		return nil, errMissingMetadata
 	}
 
 	logger("[Received Req]:	The demand is %d\n", demand)
-	logger("[Received Req]:	The clientid is %s\n", id)
+	logger("[Received Req]:	The clientid is %s\n", clientId)
+	logger("[Received Req]:	reqid is %s\n", reqId)
 
-	// Update CX
-	// cXNew := b.updateCX(id, tok)
+	// Register client if unregistered
+	b.RegisterClient(clientId, demand)
 
-	// TODO: Update global cIssued and cTotals
+	issuedCredits := b.updateCreditsToIssue(clientId, demand)
+	logger("[Received Req]:	issued credits is %d\n", issuedCredits)
 
-	// TODO: What goes in header, what goes in MD?
-	// cXNew_string := strconv.FormatInt(cXNew, 10)
-	// header := metadata.Pairs("cXNew", cXNew_string)
-
-	// QS: Do I have to send this BEFORE handling?
-	header := metadata.Pairs("credits", "100")
+	// Piggyback updated credits issued
+	header := metadata.Pairs("credits", strconv.FormatInt(issuedCredits, 10))
 	grpc.SendHeader(ctx, header)
 
 	// Start the timer
-	requestID := uuid.New()
-	b.requestMap.Store(requestID, request{clientID: requestID, timeDeductions: 0})
+	b.requestMap.Store(reqId, request{reqID: reqId, timeDeductions: 0})
 	time_start := time.Now()
 
-	ctx = metadata.AppendToOutgoingContext(ctx, "reqid", requestID.String())
+	// Call the handler
+	logger("[Handling Req]:	Handling req \n")
 	m, err := handler(ctx, req)
 
 	// End the timer
 	time_end := time.Now()
-	elapsed := time_end.Sub(time_start).Nanoseconds()
-	reqTimer, _ := b.requestMap.Load(requestID)
+	elapsed := time_end.Sub(time_start).Microseconds()
+	reqTimer, _ := b.requestMap.Load(reqId)
 	timeDeductions := reqTimer.(request).timeDeductions
-	b.requestMap.Delete(requestID)
+	b.requestMap.Delete(reqId)
+	// Account for deductions of outgoing calls
 	delay := elapsed - timeDeductions
 
+	logger("[Req handled]: Time delay was %d after deduction of %d\n", delay, timeDeductions)
+
 	// Update delay as neccessary
-	if delay > b.greatestDelay {
-		b.greatestDelay = elapsed
+	if delay > b.currGreatestDelay {
+		b.currGreatestDelay = delay
 	}
+
+	// Does update once every rtt
+	b.rttUpdate()
 
 	if err != nil {
 		logger("RPC failed with error %v", err)
