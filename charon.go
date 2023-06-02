@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math/rand"
 	"time"
 
 	"strconv"
@@ -29,38 +28,67 @@ type PriceTable struct {
 	// locker  DistLocker
 	// The following lockfree hashmap should contain total price, selfprice and downstream price
 	// initprice is the price table's initprice.
-	initprice int64
-	nodename  string
-	cmap      sync.Map
-	ptmap     sync.Map
-	// clock   Clock
-	// logger  Logger
+	initprice     int64
+	nodeName      string
+	callMap       map[string]interface{}
+	priceTableMap sync.Map
+	rateLimiter   chan int64
 	// updateRate is the rate at which price should be updated at least once.
-	// updateRate time.Duration
-	// mu        sync.Mutex
+	tokensLeft     int64
+	updateRate     time.Duration
+	lastUpdateTime time.Time
+	updateStep     int64
 }
 
 // NewPriceTable creates a new instance of PriceTable.
 // func NewPriceTable(initprice int64, callmap sync.Map, pricetable sync.Map) *PriceTable {
-func NewPriceTable(initprice int64, nodeName string, callmap sync.Map) *PriceTable {
-	return &PriceTable{
-		initprice: initprice,
-		nodename:  nodeName,
-		cmap:      callmap,
-		ptmap:     sync.Map{},
-		// locker:     locker,
-		// clock:      clock,
-		// logger:     logger,
+func NewPriceTable(initprice int64, nodeName string, callmap map[string]interface{}) (priceTable *PriceTable) {
+	priceTable = &PriceTable{
+		initprice:     initprice,
+		nodeName:      nodeName,
+		callMap:       callmap,
+		priceTableMap: sync.Map{},
+		rateLimiter:   make(chan int64, 1),
 		// updateRate: updateRate,
+		tokensLeft: 3,
+		updateRate: time.Second,
+		// updateRate:     10 * time.Microsecond,
+		lastUpdateTime: time.Now(),
+		updateStep:     1,
+	}
+	// priceTable.rateLimiter <- 1
+	return priceTable
+}
+
+// tokenRefill is a goroutine that refills the tokens in the price table.
+func tokenRefill(pt *PriceTable) {
+	for range time.Tick(pt.updateRate) {
+		pt.tokensLeft += pt.updateStep
+		pt.lastUpdateTime = time.Now()
+		pt.unblockRateLimiter()
+		logger("[TokenRefill]: Tokens refilled. Tokens left: %d\n", pt.tokensLeft)
+	}
+}
+
+/*
+Unblocks rateLimiter channel.
+*/
+func (pt *PriceTable) unblockRateLimiter() {
+	select {
+	case pt.rateLimiter <- 1:
+		return
+	default:
+		return
 	}
 }
 
 // RateLimiting is for the end user (human client) to check the price and ratelimit their calls when tokens < prices.
 func (t *PriceTable) RateLimiting(ctx context.Context, tokens int64, methodName string) error {
-	downstreamName, _ := t.cmap.Load(methodName)
-	servicePrice_string, _ := t.ptmap.LoadOrStore(downstreamName, t.initprice)
+	// downstreamName, _ := t.callMap.Load(methodName)
+	downstreamName, _ := t.callMap[methodName]
+	servicePrice_string, _ := t.priceTableMap.LoadOrStore(downstreamName, t.initprice)
 	servicePrice := servicePrice_string.(int64)
-	// var extratoken int64
+
 	extratoken := tokens - servicePrice
 	logger("[Ratelimiting]: Checking Request. Token is %d, %s price is %d\n", tokens, downstreamName, servicePrice)
 
@@ -72,12 +100,14 @@ func (t *PriceTable) RateLimiting(ctx context.Context, tokens int64, methodName 
 }
 
 func (t *PriceTable) RetrieveDSPrice(ctx context.Context, methodName string) (int64, error) {
-	downstreamNames, _ := t.cmap.Load(methodName)
+	// retrive downstream node name involved in the request from callmap.
+	// downstreamNames, _ := t.callMap.Load(methodName)
+	downstreamNames, _ := t.callMap[methodName]
 	var downstreamPriceSum int64
 	// var downstreamPrice int64
 	if downstreamNamesSlice, ok := downstreamNames.([]string); ok {
 		for _, downstreamName := range downstreamNamesSlice {
-			downstreamPriceString, _ := t.ptmap.LoadOrStore(downstreamName, int64(0))
+			downstreamPriceString, _ := t.priceTableMap.LoadOrStore(downstreamName, int64(0))
 			downstreamPrice := downstreamPriceString.(int64)
 			downstreamPriceSum += downstreamPrice
 		}
@@ -87,7 +117,7 @@ func (t *PriceTable) RetrieveDSPrice(ctx context.Context, methodName string) (in
 }
 
 func (t *PriceTable) RetrieveTotalPrice(ctx context.Context, methodName string) (string, error) {
-	ownPrice_string, _ := t.ptmap.LoadOrStore("ownprice", t.initprice)
+	ownPrice_string, _ := t.priceTableMap.LoadOrStore("ownprice", t.initprice)
 	ownPrice := ownPrice_string.(int64)
 	downstreamPrice, _ := t.RetrieveDSPrice(ctx, methodName)
 	totalPrice := ownPrice + downstreamPrice
@@ -100,7 +130,7 @@ func (t *PriceTable) RetrieveTotalPrice(ctx context.Context, methodName string) 
 // It returns #token left from ownprice, and a nil error if the request has sufficient amount of tokens.
 // It returns ErrLimitExhausted if the amount of available tokens is less than requested.
 func (t *PriceTable) LoadShading(ctx context.Context, tokens int64, methodName string) (int64, error) {
-	ownPrice_string, _ := t.ptmap.LoadOrStore("ownprice", t.initprice)
+	ownPrice_string, _ := t.priceTableMap.LoadOrStore("ownprice", t.initprice)
 	ownPrice := ownPrice_string.(int64)
 	downstreamPrice, _ := t.RetrieveDSPrice(ctx, methodName)
 	totalPrice := ownPrice + downstreamPrice
@@ -119,7 +149,7 @@ func (t *PriceTable) LoadShading(ctx context.Context, tokens int64, methodName s
 		if ownPrice > 0 {
 			ownPrice -= 1
 		}
-		t.ptmap.Store("ownprice", ownPrice)
+		t.priceTableMap.Store("ownprice", ownPrice)
 		// totalPrice = ownPrice + downstreamPrice
 		// t.ptmap.Store("totalprice", totalPrice)
 		return 0, InsufficientTokens
@@ -135,7 +165,7 @@ func (t *PriceTable) LoadShading(ctx context.Context, tokens int64, methodName s
 	}
 	logger("[Received Req]:	Own price updated to %d\n", ownPrice)
 
-	t.ptmap.Store("ownprice", ownPrice)
+	t.priceTableMap.Store("ownprice", ownPrice)
 	// totalPrice = ownPrice + downstreamPrice
 	// t.ptmap.Store("totalprice", totalPrice)
 	return tokenleft, nil
@@ -144,7 +174,8 @@ func (t *PriceTable) LoadShading(ctx context.Context, tokens int64, methodName s
 // SplitTokens splits the tokens left on the request to the downstream services.
 // It returns a map, with the downstream service names as keys, and tokens left for them as values.
 func (t *PriceTable) SplitTokens(ctx context.Context, tokenleft int64, methodName string) ([]string, error) {
-	downstreamNames, _ := t.cmap.Load(methodName)
+	downstreamNames, _ := t.callMap[methodName]
+	// downstreamNames, _ := t.callMap.Load(methodName)
 	downstreamTokens := []string{}
 	downstreamPriceSum, _ := t.RetrieveDSPrice(ctx, methodName)
 	logger("[Split tokens]:	downstream total price is %d\n", downstreamPriceSum)
@@ -154,7 +185,7 @@ func (t *PriceTable) SplitTokens(ctx context.Context, tokenleft int64, methodNam
 		tokenleftPerDownstream := (tokenleft - downstreamPriceSum) / int64(size)
 		logger("[Split tokens]:	extra token left for each ds is %d\n", tokenleftPerDownstream)
 		for _, downstreamName := range downstreamNamesSlice {
-			downstreamPriceString, _ := t.ptmap.LoadOrStore(downstreamName, int64(0))
+			downstreamPriceString, _ := t.priceTableMap.LoadOrStore(downstreamName, int64(0))
 			downstreamPrice := downstreamPriceString.(int64)
 			downstreamToken := tokenleftPerDownstream + downstreamPrice
 			downstreamTokens = append(downstreamTokens, "tokens-"+downstreamName, strconv.FormatInt(downstreamToken, 10))
@@ -168,7 +199,7 @@ func (t *PriceTable) SplitTokens(ctx context.Context, tokenleft int64, methodNam
 func (t *PriceTable) UpdatePrice(ctx context.Context, method string, downstreamPrice int64) (int64, error) {
 
 	// Update the downstream price.
-	t.ptmap.Store(method, downstreamPrice)
+	t.priceTableMap.Store(method, downstreamPrice)
 	logger("[Received Resp]:	Downstream price of %s updated to %d\n", method, downstreamPrice)
 
 	// var totalPrice int64
@@ -186,7 +217,7 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorClient(ctx context.Context
 	// logger("[Before Req]:	The method name for price table is ")
 	// logger(method)
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
-	ctx = metadata.AppendToOutgoingContext(ctx, "name", PriceTableInstance.nodename)
+	ctx = metadata.AppendToOutgoingContext(ctx, "name", PriceTableInstance.nodeName)
 	var header metadata.MD // variable to store header and trailer
 	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
 	if err != nil {
@@ -211,17 +242,31 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorEnduser(ctx context.Contex
 	// logger("[Before Req]:	The method name for price table is ")
 	// logger(method)
 
-	rand.Seed(time.Now().UnixNano())
-	tok := rand.Intn(30)
-	tok_string := strconv.Itoa(tok)
+	// rand.Seed(time.Now().UnixNano())
+	// tok := rand.Intn(30)
+	// tok_string := strconv.Itoa(tok)
+
+	// Only refill the tokens when the interceptor is for enduser.
+	go tokenRefill(PriceTableInstance)
+
+	var tok int64
 
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
-	ratelimit := PriceTableInstance.RateLimiting(ctx, int64(tok), "echo")
-	if ratelimit != nil {
-		return ratelimit
+	for {
+		// right now let's assume that client uses all the tokens on her next request.
+		tok = PriceTableInstance.tokensLeft
+		ratelimit := PriceTableInstance.RateLimiting(ctx, tok, "echo")
+		if ratelimit == RateLimited {
+			// return ratelimit
+			<-PriceTableInstance.rateLimiter
+		} else {
+			break
+		}
 	}
 
-	ctx = metadata.AppendToOutgoingContext(ctx, "tokens", tok_string, "name", PriceTableInstance.nodename)
+	PriceTableInstance.tokensLeft -= tok
+	tok_string := strconv.FormatInt(tok, 10)
+	ctx = metadata.AppendToOutgoingContext(ctx, "tokens", tok_string, "name", PriceTableInstance.nodeName)
 
 	var header metadata.MD // variable to store header and trailer
 	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
@@ -272,8 +317,8 @@ func (PriceTableInstance *PriceTable) UnaryInterceptor(ctx context.Context, req 
 	var tok int64
 	var err error
 
-	if val, ok := md["tokens-"+PriceTableInstance.nodename]; ok {
-		logger("[Received Req]:	tokens for %s are %s\n", PriceTableInstance.nodename, val)
+	if val, ok := md["tokens-"+PriceTableInstance.nodeName]; ok {
+		logger("[Received Req]:	tokens for %s are %s\n", PriceTableInstance.nodeName, val)
 		tok, err = strconv.ParseInt(val[0], 10, 64)
 	} else {
 		logger("[Received Req]:	tokens are %s\n", md["tokens"])
@@ -311,7 +356,7 @@ func (PriceTableInstance *PriceTable) UnaryInterceptor(ctx context.Context, req 
 	// totalPrice_string, _ := PriceTableInstance.ptmap.Load("totalprice")
 	price_string, _ := PriceTableInstance.RetrieveTotalPrice(ctx, "echo")
 
-	header := metadata.Pairs("price", price_string, "name", PriceTableInstance.nodename)
+	header := metadata.Pairs("price", price_string, "name", PriceTableInstance.nodeName)
 	logger("[Preparing Resp]:	Total price is %s\n", price_string)
 	grpc.SendHeader(ctx, header)
 

@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"sync"
 	"time"
 
 	"github.com/tgiannoukos/charon"
@@ -125,10 +124,11 @@ func main() {
 	}
 
 	const initialPrice = 2
+	callGraph := make(map[string]interface{})
 	priceTable := charon.NewPriceTable(
 		initialPrice,
 		"backend",
-		sync.Map{},
+		callGraph,
 	)
 
 	s := grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(priceTable.UnaryInterceptor), grpc.StreamInterceptor(streamInterceptor))

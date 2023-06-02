@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"sync"
 	"time"
 
 	"github.com/tgiannoukos/charon"
@@ -176,14 +175,18 @@ func main() {
 	}
 
 	const initialPrice = 2
-	callGraph := sync.Map{}
+	// callGraph := sync.Map{}
 	downstreams := []string{"backend"}
-	callGraph.Store("echo", downstreams)
+	callGraph := make(map[string]interface{})
+	callGraph["echo"] = downstreams
+	// callGraph.Store("echo", downstreams)
 	priceTable := charon.NewPriceTable(
 		initialPrice,
 		"frontend",
 		callGraph,
 	)
+	// priceTable.callMap.Store("echo", downstreams)
+
 	s := grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(priceTable.UnaryInterceptor), grpc.StreamInterceptor(streamInterceptor))
 
 	creds_client, err_client := credentials.NewClientTLSFromFile(data.Path("x509/ca_cert.pem"), "x.test.example.com")
