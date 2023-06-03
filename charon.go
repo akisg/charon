@@ -50,7 +50,7 @@ func NewPriceTable(initprice int64, nodeName string, callmap map[string]interfac
 		priceTableMap: sync.Map{},
 		rateLimiter:   make(chan int64, 1),
 		// updateRate: updateRate,
-		tokensLeft: 3,
+		tokensLeft: 10,
 		updateRate: time.Second,
 		// updateRate:     10 * time.Microsecond,
 		lastUpdateTime: time.Now(),
