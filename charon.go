@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync/atomic"
 	"time"
 
 	"strconv"
@@ -25,7 +26,6 @@ var (
 
 // PriceTable implements the Charon price table
 type PriceTable struct {
-	// locker  DistLocker
 	// The following lockfree hashmap should contain total price, selfprice and downstream price
 	// initprice is the price table's initprice.
 	initprice     int64
@@ -34,36 +34,66 @@ type PriceTable struct {
 	priceTableMap sync.Map
 	rateLimiter   chan int64
 	// updateRate is the rate at which price should be updated at least once.
-	tokensLeft     int64
-	updateRate     time.Duration
-	lastUpdateTime time.Time
-	updateStep     int64
+	tokensLeft         int64
+	tokenUpdateRate    time.Duration
+	lastUpdateTime     time.Time
+	tokenUpdateStep    int64
+	throughtputCounter int64
+	priceUpdateRate    time.Duration
+	debug              bool
 }
 
 // NewPriceTable creates a new instance of PriceTable.
 // func NewPriceTable(initprice int64, callmap sync.Map, pricetable sync.Map) *PriceTable {
 func NewPriceTable(initprice int64, nodeName string, callmap map[string]interface{}) (priceTable *PriceTable) {
 	priceTable = &PriceTable{
-		initprice:     initprice,
-		nodeName:      nodeName,
-		callMap:       callmap,
-		priceTableMap: sync.Map{},
-		rateLimiter:   make(chan int64, 1),
-		// updateRate: updateRate,
-		tokensLeft: 10,
-		updateRate: time.Second,
-		// updateRate:     10 * time.Microsecond,
-		lastUpdateTime: time.Now(),
-		updateStep:     1,
+		initprice:          initprice,
+		nodeName:           nodeName,
+		callMap:            callmap,
+		priceTableMap:      sync.Map{},
+		rateLimiter:        make(chan int64, 1),
+		tokensLeft:         10,
+		tokenUpdateRate:    time.Millisecond * 10,
+		lastUpdateTime:     time.Now(),
+		tokenUpdateStep:    10,
+		throughtputCounter: 0,
+		priceUpdateRate:    time.Millisecond * 100,
+		debug:              false,
 	}
 	// priceTable.rateLimiter <- 1
+	// Only refill the tokens when the interceptor is for enduser.
+	if priceTable.nodeName == "client" {
+		go priceTable.tokenRefill()
+	} else {
+		go priceTable.decrementCounter()
+	}
+
 	return priceTable
 }
 
+func (cc *PriceTable) Increment() {
+	atomic.AddInt64(&cc.throughtputCounter, 1)
+}
+
+func (cc *PriceTable) Decrement() {
+	atomic.AddInt64(&cc.throughtputCounter, -200)
+}
+
+func (cc *PriceTable) GetCount() int64 {
+	return atomic.LoadInt64(&cc.throughtputCounter)
+}
+
+// decrementCounter decrements the counter by 200 every 100 milliseconds.
+func (pt *PriceTable) decrementCounter() {
+	for range time.Tick(pt.priceUpdateRate) {
+		pt.decrementCounter()
+	}
+}
+
 // tokenRefill is a goroutine that refills the tokens in the price table.
-func tokenRefill(pt *PriceTable) {
-	for range time.Tick(pt.updateRate) {
-		pt.tokensLeft += pt.updateStep
+func (pt *PriceTable) tokenRefill() {
+	for range time.Tick(pt.tokenUpdateRate) {
+		pt.tokensLeft += pt.tokenUpdateStep
 		pt.lastUpdateTime = time.Now()
 		pt.unblockRateLimiter()
 		logger("[TokenRefill]: Tokens refilled. Tokens left: %d\n", pt.tokensLeft)
@@ -125,6 +155,18 @@ func (t *PriceTable) RetrieveTotalPrice(ctx context.Context, methodName string) 
 	return price_string, nil
 }
 
+// Assume that own price is per microservice and it does not change across different types of requests/interfaces.
+func (t *PriceTable) UpdateOwnPrice(ctx context.Context, reqDropped bool, tokens int64, ownPrice int64) error {
+	t.Increment()
+	if t.GetCount() > 0 {
+		ownPrice += 1
+	} else {
+		ownPrice -= 1
+	}
+	t.priceTableMap.Store("ownprice", ownPrice)
+	return nil
+}
+
 // LoadShading takes tokens from the request according to the price table,
 // then it updates the price table according to the tokens on the req.
 // It returns #token left from ownprice, and a nil error if the request has sufficient amount of tokens.
@@ -144,14 +186,14 @@ func (t *PriceTable) LoadShading(ctx context.Context, tokens int64, methodName s
 
 	logger("[Received Req]:	Total price is %d, ownPrice is %d downstream price is %d\n", totalPrice, ownPrice, downstreamPrice)
 
+	t.UpdateOwnPrice(ctx, extratoken < 0, tokens, ownPrice)
+
 	if extratoken < 0 {
 		logger("[Received Req]: Request rejected for lack of tokens. ownPrice is %d downstream price is %d\n", ownPrice, downstreamPrice)
-		if ownPrice > 0 {
-			ownPrice -= 1
-		}
-		t.priceTableMap.Store("ownprice", ownPrice)
-		// totalPrice = ownPrice + downstreamPrice
-		// t.ptmap.Store("totalprice", totalPrice)
+		// if ownPrice > 0 {
+		// 	ownPrice -= 1
+		// }
+		// t.priceTableMap.Store("ownprice", ownPrice)
 		return 0, InsufficientTokens
 	}
 
@@ -159,13 +201,13 @@ func (t *PriceTable) LoadShading(ctx context.Context, tokens int64, methodName s
 	var tokenleft int64
 	tokenleft = tokens - ownPrice
 
-	ownPrice += 1
-	if ownPrice > 3 {
-		ownPrice -= 3
-	}
+	// ownPrice += 1
+	// if ownPrice > 3 {
+	// 	ownPrice -= 3
+	// }
+	// t.priceTableMap.Store("ownprice", ownPrice)
 	logger("[Received Req]:	Own price updated to %d\n", ownPrice)
 
-	t.priceTableMap.Store("ownprice", ownPrice)
 	// totalPrice = ownPrice + downstreamPrice
 	// t.ptmap.Store("totalprice", totalPrice)
 	return tokenleft, nil
@@ -195,7 +237,7 @@ func (t *PriceTable) SplitTokens(ctx context.Context, tokenleft int64, methodNam
 	return downstreamTokens, nil
 }
 
-// UpdatePrice incorperates (add to own price, so far) the downstream price table to its own price table.
+// UpdatePrice incorperates the downstream price table to its own price table.
 func (t *PriceTable) UpdatePrice(ctx context.Context, method string, downstreamPrice int64) (int64, error) {
 
 	// Update the downstream price.
@@ -246,9 +288,6 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorEnduser(ctx context.Contex
 	// tok := rand.Intn(30)
 	// tok_string := strconv.Itoa(tok)
 
-	// Only refill the tokens when the interceptor is for enduser.
-	go tokenRefill(PriceTableInstance)
-
 	var tok int64
 
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
@@ -292,7 +331,7 @@ var (
 
 // logger is to mock a sophisticated logging system. To simplify the example, we just print out the content.
 func logger(format string, a ...interface{}) {
-	fmt.Printf("LOG:\t"+format+"\n", a...)
+	// fmt.Printf("LOG:\t"+format+"\n", a...)
 }
 
 func getMethodInfo(ctx context.Context) {
