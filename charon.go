@@ -2,7 +2,6 @@ package charon
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"sync/atomic"
 	"time"
@@ -400,7 +399,7 @@ func (PriceTableInstance *PriceTable) UnaryInterceptor(ctx context.Context, req 
 	grpc.SendHeader(ctx, header)
 
 	duration := time.Since(start).Milliseconds()
-	fmt.Printf("[Server-side Timer] Processing Duration is: %.2d milliseconds\n", duration)
+	logger("[Server-side Timer] Processing Duration is: %.2d milliseconds\n", duration)
 
 	if err != nil {
 		logger("RPC failed with error %v", err)
