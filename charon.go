@@ -157,11 +157,11 @@ func (t *PriceTable) RetrieveTotalPrice(ctx context.Context, methodName string) 
 // Assume that own price is per microservice and it does not change across different types of requests/interfaces.
 func (t *PriceTable) UpdateOwnPrice(ctx context.Context, reqDropped bool, tokens int64, ownPrice int64) error {
 	t.Increment()
-	if t.GetCount() > 0 {
-		ownPrice += 1
-	} else {
-		ownPrice -= 1
-	}
+	// if t.GetCount() > 0 {
+	// 	ownPrice += 1
+	// } else {
+	// 	ownPrice -= 1
+	// }
 	t.priceTableMap.Store("ownprice", ownPrice)
 	return nil
 }
