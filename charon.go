@@ -74,18 +74,18 @@ func (cc *PriceTable) Increment() {
 	atomic.AddInt64(&cc.throughtputCounter, 1)
 }
 
-func (cc *PriceTable) Decrement() {
-	atomic.AddInt64(&cc.throughtputCounter, -200)
+func (cc *PriceTable) Decrement(step int64) {
+	atomic.AddInt64(&cc.throughtputCounter, -step)
 }
 
 func (cc *PriceTable) GetCount() int64 {
-	return atomic.LoadInt64(&cc.throughtputCounter)
+	return atomic.SwapInt64(&cc.throughtputCounter, 0)
 }
 
 // decrementCounter decrements the counter by 200 every 100 milliseconds.
 func (pt *PriceTable) decrementCounter() {
 	for range time.Tick(pt.priceUpdateRate) {
-		pt.decrementCounter()
+		pt.Decrement(200)
 	}
 }
 
@@ -157,11 +157,11 @@ func (t *PriceTable) RetrieveTotalPrice(ctx context.Context, methodName string) 
 // Assume that own price is per microservice and it does not change across different types of requests/interfaces.
 func (t *PriceTable) UpdateOwnPrice(ctx context.Context, reqDropped bool, tokens int64, ownPrice int64) error {
 	t.Increment()
-	// if t.GetCount() > 0 {
-	// 	ownPrice += 1
-	// } else {
-	// 	ownPrice -= 1
-	// }
+	if t.GetCount() > 0 {
+		ownPrice += 1
+	} else {
+		ownPrice -= 1
+	}
 	t.priceTableMap.Store("ownprice", ownPrice)
 	return nil
 }
@@ -189,10 +189,6 @@ func (t *PriceTable) LoadShading(ctx context.Context, tokens int64, methodName s
 
 	if extratoken < 0 {
 		logger("[Received Req]: Request rejected for lack of tokens. ownPrice is %d downstream price is %d\n", ownPrice, downstreamPrice)
-		// if ownPrice > 0 {
-		// 	ownPrice -= 1
-		// }
-		// t.priceTableMap.Store("ownprice", ownPrice)
 		return 0, InsufficientTokens
 	}
 
@@ -200,11 +196,6 @@ func (t *PriceTable) LoadShading(ctx context.Context, tokens int64, methodName s
 	var tokenleft int64
 	tokenleft = tokens - ownPrice
 
-	// ownPrice += 1
-	// if ownPrice > 3 {
-	// 	ownPrice -= 3
-	// }
-	// t.priceTableMap.Store("ownprice", ownPrice)
 	logger("[Received Req]:	Own price updated to %d\n", ownPrice)
 
 	// totalPrice = ownPrice + downstreamPrice
