@@ -123,7 +123,7 @@ func main() {
 		fmt.Printf("failed to create credentials: %v", err)
 	}
 
-	const initialPrice = 1000
+	const initialPrice = 0
 	callGraph := make(map[string]interface{})
 	priceTable := charon.NewPriceTable(
 		initialPrice,

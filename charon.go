@@ -56,7 +56,7 @@ func NewPriceTable(initprice int64, nodeName string, callmap map[string]interfac
 		lastUpdateTime:     time.Now(),
 		tokenUpdateStep:    10,
 		throughtputCounter: 0,
-		priceUpdateRate:    time.Millisecond * 10,
+		priceUpdateRate:    time.Millisecond * 100,
 		debug:              false,
 	}
 	// priceTable.rateLimiter <- 1
@@ -79,7 +79,7 @@ func (cc *PriceTable) Decrement(step int64) {
 }
 
 func (cc *PriceTable) GetCount() int64 {
-	return atomic.SwapInt64(&cc.throughtputCounter, 0)
+	return atomic.LoadInt64(&cc.throughtputCounter)
 }
 
 // decrementCounter decrements the counter by 200 every 100 milliseconds.
@@ -157,7 +157,8 @@ func (t *PriceTable) RetrieveTotalPrice(ctx context.Context, methodName string) 
 // Assume that own price is per microservice and it does not change across different types of requests/interfaces.
 func (t *PriceTable) UpdateOwnPrice(ctx context.Context, reqDropped bool, tokens int64, ownPrice int64) error {
 	t.Increment()
-	if t.GetCount() > 0 {
+	// fmt.Println("Throughtput counter:", atomic.LoadInt64(&t.throughtputCounter))
+	if t.GetCount() > 100 {
 		ownPrice += 1
 	} else if ownPrice > 0 {
 		ownPrice -= 1

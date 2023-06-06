@@ -73,7 +73,7 @@ func streamInterceptor(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.Clie
 	return newWrappedStream(s), nil
 }
 
-func callUnaryEcho(client ecpb.EchoClient, message string) {
+func callUnaryEcho(client ecpb.EchoClient, message string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	fmt.Println("About to send msg: ", message)
@@ -82,7 +82,7 @@ func callUnaryEcho(client ecpb.EchoClient, message string) {
 		log.Fatalf("client.UnaryEcho(_) = _, %v: ", err)
 	}
 	fmt.Println("UnaryEcho: ", resp.Message)
-
+	return err
 	// for retry := 0; retry < 5; retry++ {
 	// 	resp, err := client.UnaryEcho(ctx, &ecpb.EchoRequest{Message: message})
 
@@ -160,8 +160,16 @@ func main() {
 
 	// Make a echo client and send RPCs.
 	rgc := ecpb.NewEchoClient(conn)
-	callUnaryEcho(rgc, "First msg")
-	callUnaryEcho(rgc, "Second msg")
-	callUnaryEcho(rgc, "Final msg")
+
+	for {
+		err := callUnaryEcho(rgc, "message")
+		if err != nil {
+			// Handle the error here
+			fmt.Println("Error:", err)
+			// You can choose to continue the loop or break out of it
+			// continue
+			// break
+		}
+	}
 	//callBidiStreamingEcho(rgc)
 }
