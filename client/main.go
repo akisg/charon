@@ -77,8 +77,10 @@ func callUnaryEcho(client ecpb.EchoClient, message string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	fmt.Println("About to send msg: ", message)
-	resp, _ := client.UnaryEcho(ctx, &ecpb.EchoRequest{Message: message})
-
+	resp, err := client.UnaryEcho(ctx, &ecpb.EchoRequest{Message: message})
+	if err != nil {
+		log.Fatalf("client.UnaryEcho(_) = _, %v: ", err)
+	}
 	fmt.Println("UnaryEcho: ", resp.Message)
 
 	// for retry := 0; retry < 5; retry++ {

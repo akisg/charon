@@ -2,6 +2,7 @@ package charon
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"sync/atomic"
 	"time"
@@ -159,7 +160,7 @@ func (t *PriceTable) UpdateOwnPrice(ctx context.Context, reqDropped bool, tokens
 	t.Increment()
 	if t.GetCount() > 0 {
 		ownPrice += 1
-	} else {
+	} else if ownPrice > 0 {
 		ownPrice -= 1
 	}
 	t.priceTableMap.Store("ownprice", ownPrice)
@@ -252,19 +253,15 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorClient(ctx context.Context
 	ctx = metadata.AppendToOutgoingContext(ctx, "name", PriceTableInstance.nodeName)
 	var header metadata.MD // variable to store header and trailer
 	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
-	if err != nil {
-		// The request failed. This error should be logged and examined.
-		// log.Println(err)
-		return err
-	}
 	// err := invoker(ctx, method, req, reply, cc, opts...)
+
 	// Jiali: after replied. update and store the price info for future
 	if len(header["price"]) > 0 {
 		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
 		PriceTableInstance.UpdatePrice(ctx, header["name"][0], priceDownstream)
+		logger("[After Resp]:	The price table is from %s\n", header["name"])
 	}
 
-	logger("[After Resp]:	The price table is from %s\n", header["name"])
 	return err
 }
 
@@ -299,19 +296,13 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorEnduser(ctx context.Contex
 
 	var header metadata.MD // variable to store header and trailer
 	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
-	if err != nil {
-		// The request failed. This error should be logged and examined.
-		// log.Println(err)
-		return err
-	}
+
 	// Jiali: after replied. update and store the price info for future
 	if len(header["price"]) > 0 {
 		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
 		PriceTableInstance.UpdatePrice(ctx, header["name"][0], priceDownstream)
+		logger("[After Resp]:	The price table is from %s\n", header["name"])
 	}
-	// Jiali: after replied. update and store the price info for future
-
-	logger("[After Resp]:	The price table is from %s\n", header["name"])
 	return err
 }
 
@@ -321,7 +312,7 @@ var (
 
 // logger is to mock a sophisticated logging system. To simplify the example, we just print out the content.
 func logger(format string, a ...interface{}) {
-	// fmt.Printf("LOG:\t"+format+"\n", a...)
+	fmt.Printf("LOG:\t"+format+"\n", a...)
 }
 
 func getMethodInfo(ctx context.Context) {
@@ -357,6 +348,10 @@ func (PriceTableInstance *PriceTable) UnaryInterceptor(ctx context.Context, req 
 	// overload handler:
 	tokenleft, err := PriceTableInstance.LoadShading(ctx, tok, "echo")
 	if err == InsufficientTokens {
+		price_string, _ := PriceTableInstance.RetrieveTotalPrice(ctx, "echo")
+		header := metadata.Pairs("price", price_string, "name", PriceTableInstance.nodeName)
+		logger("[Sending Error Resp]:	Total price is %s\n", price_string)
+		grpc.SendHeader(ctx, header)
 		return nil, status.Errorf(codes.ResourceExhausted, "req dropped, try again later")
 	} else if err != nil {
 		// The limiter failed. This error should be logged and examined.
