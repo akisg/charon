@@ -56,7 +56,7 @@ func NewPriceTable(initprice int64, nodeName string, callmap map[string]interfac
 		lastUpdateTime:     time.Now(),
 		tokenUpdateStep:    10,
 		throughtputCounter: 0,
-		priceUpdateRate:    time.Millisecond * 100,
+		priceUpdateRate:    time.Millisecond * 10,
 		debug:              false,
 	}
 	// priceTable.rateLimiter <- 1
@@ -351,7 +351,8 @@ func (PriceTableInstance *PriceTable) UnaryInterceptor(ctx context.Context, req 
 		header := metadata.Pairs("price", price_string, "name", PriceTableInstance.nodeName)
 		logger("[Sending Error Resp]:	Total price is %s\n", price_string)
 		grpc.SendHeader(ctx, header)
-		return nil, status.Errorf(codes.ResourceExhausted, "req dropped, try again later")
+		// return nil, status.Errorf(codes.ResourceExhausted, "req dropped, try again later")
+		return nil, status.Errorf(codes.ResourceExhausted, "%d token for %s price. req dropped, try again later", tok, price_string)
 	} else if err != nil {
 		// The limiter failed. This error should be logged and examined.
 		log.Println(err)
