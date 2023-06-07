@@ -86,6 +86,16 @@ func (cc *PriceTable) GetCount() int64 {
 func (pt *PriceTable) decrementCounter() {
 	for range time.Tick(pt.priceUpdateRate) {
 		pt.Decrement(250)
+
+		ownPrice_string, _ := pt.priceTableMap.LoadOrStore("ownprice", pt.initprice)
+		ownPrice := ownPrice_string.(int64)
+		if pt.GetCount() > 10 {
+			ownPrice += 1
+			// atomic.SwapInt64(&pt.throughtputCounter, 0)
+		} else if ownPrice > 0 {
+			ownPrice -= 1
+		}
+		pt.priceTableMap.Store("ownprice", ownPrice)
 	}
 }
 
@@ -158,13 +168,13 @@ func (t *PriceTable) RetrieveTotalPrice(ctx context.Context, methodName string) 
 func (t *PriceTable) UpdateOwnPrice(ctx context.Context, reqDropped bool, tokens int64, ownPrice int64) error {
 	t.Increment()
 	// fmt.Println("Throughtput counter:", atomic.LoadInt64(&t.throughtputCounter))
-	if t.GetCount() > 100 {
-		ownPrice += 1
-		atomic.SwapInt64(&t.throughtputCounter, 0)
-	} else if ownPrice > 0 {
-		ownPrice -= 1
-	}
-	t.priceTableMap.Store("ownprice", ownPrice)
+	// if t.GetCount() > 10 {
+	// 	ownPrice += 1
+	// 	atomic.SwapInt64(&t.throughtputCounter, 0)
+	// } else if ownPrice > 0 {
+	// 	ownPrice -= 1
+	// }
+	// t.priceTableMap.Store("ownprice", ownPrice)
 	return nil
 }
 
