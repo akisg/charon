@@ -88,7 +88,7 @@ func (cc *PriceTable) GetCount() int64 {
 // decrementCounter decrements the counter by 200 every 100 milliseconds.
 func (pt *PriceTable) decrementCounter() {
 	for range time.Tick(pt.priceUpdateRate) {
-		pt.Decrement(150)
+		pt.Decrement(200)
 
 		ownPrice_string, _ := pt.priceTableMap.LoadOrStore("ownprice", pt.initprice)
 		ownPrice := ownPrice_string.(int64)
@@ -201,12 +201,12 @@ func (t *PriceTable) LoadShading(ctx context.Context, tokens int64, methodName s
 
 	logger("[Received Req]:	Total price is %d, ownPrice is %d downstream price is %d\n", totalPrice, ownPrice, downstreamPrice)
 
-	t.UpdateOwnPrice(ctx, extratoken < 0, tokens, ownPrice)
-
 	if extratoken < 0 {
 		logger("[Received Req]: Request rejected for lack of tokens. ownPrice is %d downstream price is %d\n", ownPrice, downstreamPrice)
 		return 0, InsufficientTokens
 	}
+
+	t.UpdateOwnPrice(ctx, extratoken < 0, tokens, ownPrice)
 
 	// Take the tokens from the req.
 	var tokenleft int64
