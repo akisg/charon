@@ -81,7 +81,8 @@ func (cc *PriceTable) Decrement(step int64) {
 }
 
 func (cc *PriceTable) GetCount() int64 {
-	return atomic.LoadInt64(&cc.throughtputCounter)
+	// return atomic.LoadInt64(&cc.throughtputCounter)
+	return atomic.SwapInt64(&cc.throughtputCounter, 0)
 }
 
 // decrementCounter decrements the counter by 200 every 100 milliseconds.
@@ -98,7 +99,6 @@ func (pt *PriceTable) decrementCounter() {
 		}
 		pt.priceTableMap.Store("ownprice", ownPrice)
 
-		// atomic.SwapInt64(&pt.throughtputCounter, 0)
 	}
 }
 
