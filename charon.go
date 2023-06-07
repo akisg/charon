@@ -98,7 +98,7 @@ func (pt *PriceTable) decrementCounter() {
 		}
 		pt.priceTableMap.Store("ownprice", ownPrice)
 
-		atomic.SwapInt64(&pt.throughtputCounter, 0)
+		// atomic.SwapInt64(&pt.throughtputCounter, 0)
 	}
 }
 
