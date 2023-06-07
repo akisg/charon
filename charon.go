@@ -27,12 +27,13 @@ var (
 type PriceTable struct {
 	// The following lockfree hashmap should contain total price, selfprice and downstream price
 	// initprice is the price table's initprice.
-	initprice     int64
-	nodeName      string
-	callMap       map[string]interface{}
-	priceTableMap sync.Map
-	rateLimiting  bool
-	rateLimiter   chan int64
+	initprice          int64
+	nodeName           string
+	callMap            map[string]interface{}
+	priceTableMap      sync.Map
+	rateLimiting       bool
+	pinpointThroughput bool
+	rateLimiter        chan int64
 	// updateRate is the rate at which price should be updated at least once.
 	tokensLeft         int64
 	tokenUpdateRate    time.Duration
@@ -52,6 +53,7 @@ func NewPriceTable(initprice int64, nodeName string, callmap map[string]interfac
 		callMap:            callmap,
 		priceTableMap:      sync.Map{},
 		rateLimiting:       true,
+		pinpointThroughput: false,
 		rateLimiter:        make(chan int64, 1),
 		tokensLeft:         10,
 		tokenUpdateRate:    time.Millisecond * 10,
@@ -65,7 +67,7 @@ func NewPriceTable(initprice int64, nodeName string, callmap map[string]interfac
 	// Only refill the tokens when the interceptor is for enduser.
 	if priceTable.nodeName == "client" {
 		go priceTable.tokenRefill()
-	} else {
+	} else if priceTable.pinpointThroughput {
 		go priceTable.decrementCounter()
 	}
 
@@ -93,7 +95,7 @@ func (pt *PriceTable) decrementCounter() {
 		ownPrice_string, _ := pt.priceTableMap.LoadOrStore("ownprice", pt.initprice)
 		ownPrice := ownPrice_string.(int64)
 		if pt.GetCount() > 0 {
-			// ownPrice += 1
+			ownPrice += 1
 		} else if ownPrice > 0 {
 			ownPrice -= 1
 		}
@@ -169,17 +171,20 @@ func (t *PriceTable) RetrieveTotalPrice(ctx context.Context, methodName string) 
 
 // Assume that own price is per microservice and it does not change across different types of requests/interfaces.
 func (t *PriceTable) UpdateOwnPrice(ctx context.Context, reqDropped bool, tokens int64, ownPrice int64) error {
-	t.Increment()
+	if t.pinpointThroughput {
+		t.Increment()
+		return nil
+	}
 	// fmt.Println("Throughtput counter:", atomic.LoadInt64(&t.throughtputCounter))
 
-	// The following code has been moved to decrementCounter().
-	// if t.GetCount() > 10 {
-	// 	ownPrice += 1
-	// 	atomic.SwapInt64(&t.throughtputCounter, 0)
-	// } else if ownPrice > 0 {
-	// 	ownPrice -= 1
-	// }
-	// t.priceTableMap.Store("ownprice", ownPrice)
+	// The following code has been moved to decrementCounter() for pinpointThroughput.
+	if t.GetCount() > 10 {
+		ownPrice += 1
+		atomic.SwapInt64(&t.throughtputCounter, 0)
+	} else if ownPrice > 0 {
+		ownPrice -= 1
+	}
+	t.priceTableMap.Store("ownprice", ownPrice)
 	return nil
 }
 
