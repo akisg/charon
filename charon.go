@@ -212,7 +212,9 @@ func (t *PriceTable) LoadShading(ctx context.Context, tokens int64, methodName s
 		return 0, InsufficientTokens
 	}
 
-	t.UpdateOwnPrice(ctx, extratoken < 0, tokens, ownPrice)
+	// I'm thinking about moving it to a separate go routine, and have it run periodically for better performance.
+	// or maybe run it whenever there's a congestion detected, by latency for example.
+	// t.UpdateOwnPrice(ctx, extratoken < 0, tokens, ownPrice)
 
 	// Take the tokens from the req.
 	var tokenleft int64
