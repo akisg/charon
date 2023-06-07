@@ -85,7 +85,7 @@ func (cc *PriceTable) GetCount() int64 {
 // decrementCounter decrements the counter by 200 every 100 milliseconds.
 func (pt *PriceTable) decrementCounter() {
 	for range time.Tick(pt.priceUpdateRate) {
-		pt.Decrement(200)
+		pt.Decrement(250)
 	}
 }
 
@@ -160,6 +160,7 @@ func (t *PriceTable) UpdateOwnPrice(ctx context.Context, reqDropped bool, tokens
 	// fmt.Println("Throughtput counter:", atomic.LoadInt64(&t.throughtputCounter))
 	if t.GetCount() > 100 {
 		ownPrice += 1
+		atomic.SwapInt64(&t.throughtputCounter, 0)
 	} else if ownPrice > 0 {
 		ownPrice -= 1
 	}
