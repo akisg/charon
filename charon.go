@@ -178,12 +178,12 @@ func (t *PriceTable) UpdateOwnPrice(ctx context.Context, reqDropped bool, tokens
 	// fmt.Println("Throughtput counter:", atomic.LoadInt64(&t.throughtputCounter))
 
 	// The following code has been moved to decrementCounter() for pinpointThroughput.
-	if t.GetCount() > 10 {
-		ownPrice += 1
-		atomic.SwapInt64(&t.throughtputCounter, 0)
-	} else if ownPrice > 0 {
-		ownPrice -= 1
-	}
+	// if t.GetCount() > 10 {
+	// 	ownPrice += 1
+	// 	atomic.SwapInt64(&t.throughtputCounter, 0)
+	// } else if ownPrice > 0 {
+	// 	ownPrice -= 1
+	// }
 	t.priceTableMap.Store("ownprice", ownPrice)
 	return nil
 }
