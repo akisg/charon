@@ -31,6 +31,7 @@ type PriceTable struct {
 	nodeName      string
 	callMap       map[string]interface{}
 	priceTableMap sync.Map
+	rateLimiting  bool
 	rateLimiter   chan int64
 	// updateRate is the rate at which price should be updated at least once.
 	tokensLeft         int64
@@ -50,6 +51,7 @@ func NewPriceTable(initprice int64, nodeName string, callmap map[string]interfac
 		nodeName:           nodeName,
 		callMap:            callmap,
 		priceTableMap:      sync.Map{},
+		rateLimiting:       false,
 		rateLimiter:        make(chan int64, 1),
 		tokensLeft:         10,
 		tokenUpdateRate:    time.Millisecond * 10,
@@ -293,6 +295,9 @@ func (PriceTableInstance *PriceTable) UnaryInterceptorEnduser(ctx context.Contex
 	for {
 		// right now let's assume that client uses all the tokens on her next request.
 		tok = PriceTableInstance.tokensLeft
+		if !PriceTableInstance.rateLimiting {
+			break
+		}
 		ratelimit := PriceTableInstance.RateLimiting(ctx, tok, "echo")
 		if ratelimit == RateLimited {
 			// return ratelimit
