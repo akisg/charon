@@ -91,11 +91,12 @@ func (pt *PriceTable) decrementCounter() {
 		ownPrice := ownPrice_string.(int64)
 		if pt.GetCount() > 10 {
 			ownPrice += 1
-			// atomic.SwapInt64(&pt.throughtputCounter, 0)
 		} else if ownPrice > 0 {
 			ownPrice -= 1
 		}
 		pt.priceTableMap.Store("ownprice", ownPrice)
+
+		atomic.SwapInt64(&pt.throughtputCounter, 0)
 	}
 }
 
