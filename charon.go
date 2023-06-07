@@ -56,7 +56,7 @@ func NewPriceTable(initprice int64, nodeName string, callmap map[string]interfac
 		tokensLeft:         10,
 		tokenUpdateRate:    time.Millisecond * 10,
 		lastUpdateTime:     time.Now(),
-		tokenUpdateStep:    10,
+		tokenUpdateStep:    1,
 		throughtputCounter: 0,
 		priceUpdateRate:    time.Millisecond * 100,
 		debug:              false,
@@ -87,12 +87,12 @@ func (cc *PriceTable) GetCount() int64 {
 // decrementCounter decrements the counter by 200 every 100 milliseconds.
 func (pt *PriceTable) decrementCounter() {
 	for range time.Tick(pt.priceUpdateRate) {
-		pt.Decrement(200)
+		pt.Decrement(150)
 
 		ownPrice_string, _ := pt.priceTableMap.LoadOrStore("ownprice", pt.initprice)
 		ownPrice := ownPrice_string.(int64)
 		if pt.GetCount() > 1 {
-			ownPrice += 1
+			ownPrice += 10
 		} else if ownPrice > 0 {
 			ownPrice -= 1
 		}
@@ -171,6 +171,7 @@ func (t *PriceTable) RetrieveTotalPrice(ctx context.Context, methodName string) 
 func (t *PriceTable) UpdateOwnPrice(ctx context.Context, reqDropped bool, tokens int64, ownPrice int64) error {
 	t.Increment()
 	// fmt.Println("Throughtput counter:", atomic.LoadInt64(&t.throughtputCounter))
+	// The following code has been moved to decrementCounter().
 	// if t.GetCount() > 10 {
 	// 	ownPrice += 1
 	// 	atomic.SwapInt64(&t.throughtputCounter, 0)
