@@ -91,8 +91,8 @@ func (pt *PriceTable) decrementCounter() {
 
 		ownPrice_string, _ := pt.priceTableMap.LoadOrStore("ownprice", pt.initprice)
 		ownPrice := ownPrice_string.(int64)
-		if pt.GetCount() > 1 {
-			ownPrice += 10
+		if pt.GetCount() > 10 {
+			ownPrice += 2
 		} else if ownPrice > 0 {
 			ownPrice -= 1
 		}
