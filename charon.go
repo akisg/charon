@@ -32,6 +32,7 @@ type PriceTable struct {
 	callMap            map[string]interface{}
 	priceTableMap      sync.Map
 	rateLimiting       bool
+	loadShedding       bool
 	pinpointThroughput bool
 	rateLimiter        chan int64
 	// updateRate is the rate at which price should be updated at least once.
@@ -53,7 +54,8 @@ func NewPriceTable(initprice int64, nodeName string, callmap map[string]interfac
 		callMap:            callmap,
 		priceTableMap:      sync.Map{},
 		rateLimiting:       false,
-		pinpointThroughput: false,
+		loadShedding:       true,
+		pinpointThroughput: true,
 		rateLimiter:        make(chan int64, 1),
 		tokensLeft:         10,
 		tokenUpdateRate:    time.Millisecond * 10,
@@ -171,10 +173,6 @@ func (pt *PriceTable) RetrieveTotalPrice(ctx context.Context, methodName string)
 
 // Assume that own price is per microservice and it does not change across different types of requests/interfaces.
 func (pt *PriceTable) UpdateOwnPrice(ctx context.Context, reqDropped bool, tokens int64, ownPrice int64) error {
-	if pt.pinpointThroughput {
-		pt.Increment()
-		return nil
-	}
 	// fmt.Println("Throughtput counter:", atomic.LoadInt64(&t.throughtputCounter))
 
 	// The following code has been moved to decrementCounter() for pinpointThroughput.
@@ -215,6 +213,9 @@ func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName
 	// I'm thinking about moving it to a separate go routine, and have it run periodically for better performance.
 	// or maybe run it whenever there's a congestion detected, by latency for example.
 	// t.UpdateOwnPrice(ctx, extratoken < 0, tokens, ownPrice)
+	if pt.pinpointThroughput {
+		pt.Increment()
+	}
 
 	// Take the tokens from the req.
 	var tokenleft int64
@@ -373,7 +374,7 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 
 	// overload handler:
 	tokenleft, err := pt.LoadShedding(ctx, tok, "echo")
-	if err == InsufficientTokens {
+	if err == InsufficientTokens && pt.loadShedding {
 		price_string, _ := pt.RetrieveTotalPrice(ctx, "echo")
 		header := metadata.Pairs("price", price_string, "name", pt.nodeName)
 		logger("[Sending Error Resp]:	Total price is %s\n", price_string)
