@@ -381,6 +381,13 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 		header := metadata.Pairs("price", price_string, "name", pt.nodeName)
 		logger("[Sending Error Resp]:	Total price is %s\n", price_string)
 		grpc.SendHeader(ctx, header)
+
+		totalLatency := time.Since(startTime)
+		logger("[Server-side Timer] Processing Duration is: %.2d milliseconds\n", totalLatency.Milliseconds())
+
+		if pt.pinpointLatency {
+			pt.UpdateOwnPrice(ctx, totalLatency > pt.latencyThreshold)
+		}
 		// return nil, status.Errorf(codes.ResourceExhausted, "req dropped, try again later")
 		return nil, status.Errorf(codes.ResourceExhausted, "%d token for %s price. req dropped, try again later", tok, price_string)
 	} else if err != nil {
