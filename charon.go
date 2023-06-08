@@ -89,10 +89,10 @@ func (pt *PriceTable) GetCount() int64 {
 	return atomic.SwapInt64(&pt.throughtputCounter, 0)
 }
 
-// decrementCounter decrements the counter by 200 every 100 milliseconds.
+// decrementCounter decrements the counter by 2x every x milliseconds.
 func (pt *PriceTable) decrementCounter() {
 	for range time.Tick(pt.priceUpdateRate) {
-		pt.Decrement(25)
+		pt.Decrement(22)
 
 		ownPrice_string, _ := pt.priceTableMap.LoadOrStore("ownprice", pt.initprice)
 		ownPrice := ownPrice_string.(int64)
