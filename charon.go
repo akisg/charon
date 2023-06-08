@@ -99,7 +99,7 @@ func (pt *PriceTable) decrementCounter() {
 		if pt.GetCount() > 0 {
 			ownPrice += 1
 		} else if ownPrice > 0 {
-			ownPrice -= 2
+			ownPrice -= 1
 		}
 		pt.priceTableMap.Store("ownprice", ownPrice)
 
