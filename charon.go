@@ -96,7 +96,7 @@ func (pt *PriceTable) GetCount() int64 {
 // decrementCounter decrements the counter by 2x every x milliseconds.
 func (pt *PriceTable) decrementCounter() {
 	for range time.Tick(pt.priceUpdateRate) {
-		pt.Decrement(16)
+		pt.Decrement(20)
 
 		// Create an empty context
 		ctx := context.Background()
@@ -204,6 +204,10 @@ func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName
 
 	logger("[Received Req]:	Total price is %d, ownPrice is %d downstream price is %d\n", totalPrice, ownPrice, downstreamPrice)
 
+	if pt.pinpointThroughput {
+		pt.Increment()
+	}
+
 	if extratoken < 0 {
 		logger("[Received Req]: Request rejected for lack of tokens. ownPrice is %d downstream price is %d\n", ownPrice, downstreamPrice)
 		return 0, InsufficientTokens
@@ -212,10 +216,6 @@ func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName
 	// I'm thinking about moving it to a separate go routine, and have it run periodically for better performance.
 	// or maybe run it whenever there's a congestion detected, by latency for example.
 	// t.UpdateOwnPrice(ctx, extratoken < 0, tokens, ownPrice)
-
-	if pt.pinpointThroughput {
-		pt.Increment()
-	}
 
 	// Take the tokens from the req.
 	var tokenleft int64
