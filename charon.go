@@ -92,14 +92,14 @@ func (pt *PriceTable) GetCount() int64 {
 // decrementCounter decrements the counter by 2x every x milliseconds.
 func (pt *PriceTable) decrementCounter() {
 	for range time.Tick(pt.priceUpdateRate) {
-		pt.Decrement(22)
+		pt.Decrement(20)
 
 		ownPrice_string, _ := pt.priceTableMap.LoadOrStore("ownprice", pt.initprice)
 		ownPrice := ownPrice_string.(int64)
 		if pt.GetCount() > 0 {
 			ownPrice += 1
 		} else if ownPrice > 0 {
-			ownPrice -= 1
+			ownPrice -= 2
 		}
 		pt.priceTableMap.Store("ownprice", ownPrice)
 
