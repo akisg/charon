@@ -53,7 +53,7 @@ func NewPriceTable(initprice int64, nodeName string, callmap map[string]interfac
 		nodeName:           nodeName,
 		callMap:            callmap,
 		priceTableMap:      sync.Map{},
-		rateLimiting:       false,
+		rateLimiting:       true,
 		loadShedding:       true,
 		pinpointThroughput: true,
 		rateLimiter:        make(chan int64, 1),
@@ -97,7 +97,7 @@ func (pt *PriceTable) decrementCounter() {
 		ownPrice_string, _ := pt.priceTableMap.LoadOrStore("ownprice", pt.initprice)
 		ownPrice := ownPrice_string.(int64)
 		if pt.GetCount() > 0 {
-			ownPrice += 1
+			// ownPrice += 1
 		} else if ownPrice > 0 {
 			ownPrice -= 1
 		}
