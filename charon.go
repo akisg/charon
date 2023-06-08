@@ -34,6 +34,7 @@ type PriceTable struct {
 	rateLimiting       bool
 	loadShedding       bool
 	pinpointThroughput bool
+	pinpointLatency    bool
 	rateLimiter        chan int64
 	// updateRate is the rate at which price should be updated at least once.
 	tokensLeft         int64
@@ -42,6 +43,7 @@ type PriceTable struct {
 	tokenUpdateStep    int64
 	throughtputCounter int64
 	priceUpdateRate    time.Duration
+	latencyThreshold   time.Duration
 	debug              bool
 }
 
@@ -55,7 +57,8 @@ func NewPriceTable(initprice int64, nodeName string, callmap map[string]interfac
 		priceTableMap:      sync.Map{},
 		rateLimiting:       false,
 		loadShedding:       true,
-		pinpointThroughput: true,
+		pinpointThroughput: false,
+		pinpointLatency:    true,
 		rateLimiter:        make(chan int64, 1),
 		tokensLeft:         10,
 		tokenUpdateRate:    time.Millisecond * 10,
@@ -63,6 +66,7 @@ func NewPriceTable(initprice int64, nodeName string, callmap map[string]interfac
 		tokenUpdateStep:    1,
 		throughtputCounter: 0,
 		priceUpdateRate:    time.Millisecond * 10,
+		latencyThreshold:   time.Millisecond * 20,
 		debug:              false,
 	}
 	// priceTable.rateLimiter <- 1
@@ -94,15 +98,9 @@ func (pt *PriceTable) decrementCounter() {
 	for range time.Tick(pt.priceUpdateRate) {
 		pt.Decrement(20)
 
-		ownPrice_string, _ := pt.priceTableMap.LoadOrStore("ownprice", pt.initprice)
-		ownPrice := ownPrice_string.(int64)
-		if pt.GetCount() > 0 {
-			ownPrice += 1
-		} else if ownPrice > 0 {
-			ownPrice -= 1
-		}
-		pt.priceTableMap.Store("ownprice", ownPrice)
-
+		// Create an empty context
+		ctx := context.Background()
+		pt.UpdateOwnPrice(ctx, pt.GetCount() > 0)
 	}
 }
 
@@ -172,16 +170,17 @@ func (pt *PriceTable) RetrieveTotalPrice(ctx context.Context, methodName string)
 }
 
 // Assume that own price is per microservice and it does not change across different types of requests/interfaces.
-func (pt *PriceTable) UpdateOwnPrice(ctx context.Context, reqDropped bool, tokens int64, ownPrice int64) error {
+func (pt *PriceTable) UpdateOwnPrice(ctx context.Context, congestion bool) error {
 	// fmt.Println("Throughtput counter:", atomic.LoadInt64(&t.throughtputCounter))
 
+	ownPrice_string, _ := pt.priceTableMap.LoadOrStore("ownprice", pt.initprice)
+	ownPrice := ownPrice_string.(int64)
 	// The following code has been moved to decrementCounter() for pinpointThroughput.
-	// if t.GetCount() > 10 {
-	// 	ownPrice += 1
-	// 	atomic.SwapInt64(&t.throughtputCounter, 0)
-	// } else if ownPrice > 0 {
-	// 	ownPrice -= 1
-	// }
+	if congestion {
+		ownPrice += 1
+	} else if ownPrice > 0 {
+		ownPrice -= 1
+	}
 	pt.priceTableMap.Store("ownprice", ownPrice)
 	return nil
 }
@@ -350,6 +349,8 @@ func getMethodInfo(ctx context.Context) {
 
 func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	// This is the server side interceptor, it should check tokens, update price, do overload handling and attach price to response
+	startTime := time.Now()
+
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		return nil, errMissingMetadata
@@ -400,8 +401,6 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 
 	// ctx = metadata.NewOutgoingContext(ctx, md)
 
-	start := time.Now()
-
 	m, err := handler(ctx, req)
 
 	// Attach the price info to response before sending
@@ -413,8 +412,12 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	logger("[Preparing Resp]:	Total price is %s\n", price_string)
 	grpc.SendHeader(ctx, header)
 
-	duration := time.Since(start).Milliseconds()
-	logger("[Server-side Timer] Processing Duration is: %.2d milliseconds\n", duration)
+	totalLatency := time.Since(startTime)
+	logger("[Server-side Timer] Processing Duration is: %.2d milliseconds\n", totalLatency.Milliseconds())
+
+	if pt.pinpointLatency {
+		pt.UpdateOwnPrice(ctx, totalLatency > pt.latencyThreshold)
+	}
 
 	if err != nil {
 		logger("RPC failed with error %v", err)
