@@ -92,7 +92,7 @@ func (pt *PriceTable) GetCount() int64 {
 // decrementCounter decrements the counter by 2x every x milliseconds.
 func (pt *PriceTable) decrementCounter() {
 	for range time.Tick(pt.priceUpdateRate) {
-		pt.Decrement(19)
+		pt.Decrement(20)
 
 		ownPrice_string, _ := pt.priceTableMap.LoadOrStore("ownprice", pt.initprice)
 		ownPrice := ownPrice_string.(int64)
