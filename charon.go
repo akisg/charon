@@ -96,7 +96,7 @@ func (pt *PriceTable) GetCount() int64 {
 // decrementCounter decrements the counter by 2x every x milliseconds.
 func (pt *PriceTable) decrementCounter() {
 	for range time.Tick(pt.priceUpdateRate) {
-		pt.Decrement(20)
+		pt.Decrement(21)
 
 		// Create an empty context
 		ctx := context.Background()
