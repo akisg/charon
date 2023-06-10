@@ -43,7 +43,8 @@ type PriceTable struct {
 	tokenUpdateStep    int64
 	throughtputCounter int64
 	priceUpdateRate    time.Duration
-	latencyThreshold   time.Duration
+	observedDelay      time.Duration
+	latencySLO         time.Duration
 	debug              bool
 }
 
@@ -55,10 +56,10 @@ func NewPriceTable(initprice int64, nodeName string, callmap map[string]interfac
 		nodeName:           nodeName,
 		callMap:            callmap,
 		priceTableMap:      sync.Map{},
-		rateLimiting:       true,
+		rateLimiting:       false,
 		loadShedding:       true,
-		pinpointThroughput: true,
-		pinpointLatency:    false,
+		pinpointThroughput: false,
+		pinpointLatency:    true,
 		rateLimiter:        make(chan int64, 1),
 		tokensLeft:         10,
 		tokenUpdateRate:    time.Millisecond * 10,
@@ -66,7 +67,8 @@ func NewPriceTable(initprice int64, nodeName string, callmap map[string]interfac
 		tokenUpdateStep:    1,
 		throughtputCounter: 0,
 		priceUpdateRate:    time.Millisecond * 10,
-		latencyThreshold:   time.Millisecond * 20,
+		observedDelay:      time.Millisecond * 0,
+		latencySLO:         time.Millisecond * 20,
 		debug:              false,
 	}
 	// priceTable.rateLimiter <- 1
@@ -74,7 +76,87 @@ func NewPriceTable(initprice int64, nodeName string, callmap map[string]interfac
 	if priceTable.nodeName == "client" {
 		go priceTable.tokenRefill()
 	} else if priceTable.pinpointThroughput {
-		go priceTable.decrementCounter()
+		go priceTable.throughputCheck()
+	} else if priceTable.pinpointLatency {
+		go priceTable.latencyCheck()
+	}
+
+	return priceTable
+}
+
+func NewCharon(nodeName string, callmap map[string]interface{}, options map[string]interface{}) *PriceTable {
+	priceTable := &PriceTable{
+		initprice:          0,
+		nodeName:           nodeName,
+		callMap:            callmap,
+		priceTableMap:      sync.Map{},
+		rateLimiting:       true,
+		loadShedding:       true,
+		pinpointThroughput: false,
+		pinpointLatency:    true,
+		rateLimiter:        make(chan int64, 1),
+		tokensLeft:         10,
+		tokenUpdateRate:    time.Millisecond * 10,
+		lastUpdateTime:     time.Now(),
+		tokenUpdateStep:    1,
+		throughtputCounter: 0,
+		priceUpdateRate:    time.Millisecond * 10,
+		observedDelay:      time.Duration(0),
+		latencySLO:         time.Millisecond * 20,
+		debug:              false,
+	}
+
+	if initprice, ok := options["initprice"].(int64); ok {
+		priceTable.initprice = initprice
+	}
+
+	if rateLimiting, ok := options["rateLimiting"].(bool); ok {
+		priceTable.rateLimiting = rateLimiting
+	}
+
+	if loadShedding, ok := options["loadShedding"].(bool); ok {
+		priceTable.loadShedding = loadShedding
+	}
+
+	if pinpointThroughput, ok := options["pinpointThroughput"].(bool); ok {
+		priceTable.pinpointThroughput = pinpointThroughput
+	}
+
+	if pinpointLatency, ok := options["pinpointLatency"].(bool); ok {
+		priceTable.pinpointLatency = pinpointLatency
+	}
+
+	if tokensLeft, ok := options["tokensLeft"].(int64); ok {
+		priceTable.tokensLeft = tokensLeft
+	}
+
+	if tokenUpdateRate, ok := options["tokenUpdateRate"].(time.Duration); ok {
+		priceTable.tokenUpdateRate = tokenUpdateRate
+	}
+
+	if tokenUpdateStep, ok := options["tokenUpdateStep"].(int64); ok {
+		priceTable.tokenUpdateStep = tokenUpdateStep
+	}
+
+	if priceUpdateRate, ok := options["priceUpdateRate"].(time.Duration); ok {
+		priceTable.priceUpdateRate = priceUpdateRate
+	}
+
+	if latencySLO, ok := options["latencySLO"].(time.Duration); ok {
+		priceTable.latencySLO = latencySLO
+	}
+
+	if debug, ok := options["debug"].(bool); ok {
+		priceTable.debug = debug
+	}
+
+	// Rest of the code remains the same
+	if priceTable.nodeName == "client" {
+		go priceTable.tokenRefill()
+	} else if priceTable.pinpointThroughput {
+		go priceTable.throughputCheck()
+	} else if priceTable.pinpointLatency {
+		go priceTable.latencyCheck()
 	}
 
 	return priceTable
@@ -93,8 +175,17 @@ func (pt *PriceTable) GetCount() int64 {
 	return atomic.SwapInt64(&pt.throughtputCounter, 0)
 }
 
-// decrementCounter decrements the counter by 2x every x milliseconds.
-func (pt *PriceTable) decrementCounter() {
+func (pt *PriceTable) latencyCheck() {
+	for range time.Tick(pt.priceUpdateRate) {
+		// Create an empty context
+		ctx := context.Background()
+		pt.UpdateOwnPrice(ctx, pt.observedDelay > pt.latencySLO/2)
+		pt.observedDelay = time.Duration(0)
+	}
+}
+
+// throughputCheck decrements the counter by 2x every x milliseconds.
+func (pt *PriceTable) throughputCheck() {
 	for range time.Tick(pt.priceUpdateRate) {
 		pt.Decrement(20)
 
@@ -386,7 +477,9 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 		logger("[Server-side Timer] Processing Duration is: %.2d milliseconds\n", totalLatency.Milliseconds())
 
 		if pt.pinpointLatency {
-			pt.UpdateOwnPrice(ctx, totalLatency > pt.latencyThreshold)
+			if totalLatency > pt.observedDelay {
+				pt.observedDelay = totalLatency // update the observed delay
+			}
 		}
 		// return nil, status.Errorf(codes.ResourceExhausted, "req dropped, try again later")
 		return nil, status.Errorf(codes.ResourceExhausted, "%d token for %s price. req dropped, try again later", tok, price_string)
@@ -423,7 +516,9 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	logger("[Server-side Timer] Processing Duration is: %.2d milliseconds\n", totalLatency.Milliseconds())
 
 	if pt.pinpointLatency {
-		pt.UpdateOwnPrice(ctx, totalLatency > pt.latencyThreshold)
+		if totalLatency > pt.observedDelay {
+			pt.observedDelay = totalLatency // update the observed delay
+		}
 	}
 
 	if err != nil {
