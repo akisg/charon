@@ -2,6 +2,7 @@ package charon
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"sync/atomic"
 	"time"
@@ -112,18 +113,22 @@ func NewCharon(nodeName string, callmap map[string]interface{}, options map[stri
 
 	if rateLimiting, ok := options["rateLimiting"].(bool); ok {
 		priceTable.rateLimiting = rateLimiting
+		fmt.Printf("rateLimiting of %s set to %v\n", nodeName, rateLimiting)
 	}
 
 	if loadShedding, ok := options["loadShedding"].(bool); ok {
 		priceTable.loadShedding = loadShedding
+		fmt.Printf("loadShedding of %s set to %v\n", nodeName, loadShedding)
 	}
 
 	if pinpointThroughput, ok := options["pinpointThroughput"].(bool); ok {
 		priceTable.pinpointThroughput = pinpointThroughput
+		fmt.Printf("pinpointThroughput of %s set to %v\n", nodeName, pinpointThroughput)
 	}
 
 	if pinpointLatency, ok := options["pinpointLatency"].(bool); ok {
 		priceTable.pinpointLatency = pinpointLatency
+		fmt.Printf("pinpointLatency of %s set to %v\n", nodeName, pinpointLatency)
 	}
 
 	if tokensLeft, ok := options["tokensLeft"].(int64); ok {
