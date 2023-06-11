@@ -38,15 +38,17 @@ type PriceTable struct {
 	pinpointLatency    bool
 	rateLimiter        chan int64
 	// updateRate is the rate at which price should be updated at least once.
-	tokensLeft         int64
-	tokenUpdateRate    time.Duration
-	lastUpdateTime     time.Time
-	tokenUpdateStep    int64
-	throughtputCounter int64
-	priceUpdateRate    time.Duration
-	observedDelay      time.Duration
-	latencySLO         time.Duration
-	debug              bool
+	tokensLeft          int64
+	tokenUpdateRate     time.Duration
+	lastUpdateTime      time.Time
+	tokenUpdateStep     int64
+	throughputCounter   int64
+	priceUpdateRate     time.Duration
+	observedDelay       time.Duration
+	latencySLO          time.Duration
+	throughputThreshold int64
+	latencyThreshold    time.Duration
+	debug               bool
 }
 
 // NewPriceTable creates a new instance of PriceTable.
@@ -66,9 +68,9 @@ func NewPriceTable(initprice int64, nodeName string, callmap map[string]interfac
 		tokenUpdateRate:    time.Millisecond * 10,
 		lastUpdateTime:     time.Now(),
 		tokenUpdateStep:    1,
-		throughtputCounter: 0,
+		throughputCounter:  0,
 		priceUpdateRate:    time.Millisecond * 10,
-		observedDelay:      time.Millisecond * 0,
+		observedDelay:      time.Duration(0),
 		latencySLO:         time.Millisecond * 20,
 		debug:              false,
 	}
@@ -87,24 +89,26 @@ func NewPriceTable(initprice int64, nodeName string, callmap map[string]interfac
 
 func NewCharon(nodeName string, callmap map[string]interface{}, options map[string]interface{}) *PriceTable {
 	priceTable := &PriceTable{
-		initprice:          0,
-		nodeName:           nodeName,
-		callMap:            callmap,
-		priceTableMap:      sync.Map{},
-		rateLimiting:       true,
-		loadShedding:       true,
-		pinpointThroughput: false,
-		pinpointLatency:    true,
-		rateLimiter:        make(chan int64, 1),
-		tokensLeft:         10,
-		tokenUpdateRate:    time.Millisecond * 10,
-		lastUpdateTime:     time.Now(),
-		tokenUpdateStep:    1,
-		throughtputCounter: 0,
-		priceUpdateRate:    time.Millisecond * 10,
-		observedDelay:      time.Duration(0),
-		latencySLO:         time.Millisecond * 20,
-		debug:              false,
+		initprice:           0,
+		nodeName:            nodeName,
+		callMap:             callmap,
+		priceTableMap:       sync.Map{},
+		rateLimiting:        true,
+		loadShedding:        true,
+		pinpointThroughput:  false,
+		pinpointLatency:     true,
+		rateLimiter:         make(chan int64, 1),
+		tokensLeft:          10,
+		tokenUpdateRate:     time.Millisecond * 10,
+		lastUpdateTime:      time.Now(),
+		tokenUpdateStep:     1,
+		throughputCounter:   0,
+		priceUpdateRate:     time.Millisecond * 10,
+		observedDelay:       time.Duration(0),
+		latencySLO:          time.Millisecond * 20,
+		throughputThreshold: 20,
+		latencyThreshold:    time.Millisecond * 16,
+		debug:               false,
 	}
 
 	if initprice, ok := options["initprice"].(int64); ok {
@@ -168,23 +172,23 @@ func NewCharon(nodeName string, callmap map[string]interface{}, options map[stri
 }
 
 func (pt *PriceTable) Increment() {
-	atomic.AddInt64(&pt.throughtputCounter, 1)
+	atomic.AddInt64(&pt.throughputCounter, 1)
 }
 
 func (pt *PriceTable) Decrement(step int64) {
-	atomic.AddInt64(&pt.throughtputCounter, -step)
+	atomic.AddInt64(&pt.throughputCounter, -step)
 }
 
 func (pt *PriceTable) GetCount() int64 {
 	// return atomic.LoadInt64(&cc.throughtputCounter)
-	return atomic.SwapInt64(&pt.throughtputCounter, 0)
+	return atomic.SwapInt64(&pt.throughputCounter, 0)
 }
 
 func (pt *PriceTable) latencyCheck() {
 	for range time.Tick(pt.priceUpdateRate) {
 		// Create an empty context
 		ctx := context.Background()
-		pt.UpdateOwnPrice(ctx, pt.observedDelay > pt.latencySLO/2)
+		pt.UpdateOwnPrice(ctx, pt.observedDelay > pt.latencyThreshold)
 		pt.observedDelay = time.Duration(0)
 	}
 }
@@ -192,7 +196,7 @@ func (pt *PriceTable) latencyCheck() {
 // throughputCheck decrements the counter by 2x every x milliseconds.
 func (pt *PriceTable) throughputCheck() {
 	for range time.Tick(pt.priceUpdateRate) {
-		pt.Decrement(20)
+		pt.Decrement(pt.throughputThreshold)
 
 		// Create an empty context
 		ctx := context.Background()
