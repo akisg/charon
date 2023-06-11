@@ -2,6 +2,7 @@ package charon
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"sync/atomic"
 	"time"
@@ -112,22 +113,22 @@ func NewCharon(nodeName string, callmap map[string]interface{}, options map[stri
 
 	if rateLimiting, ok := options["rateLimiting"].(bool); ok {
 		priceTable.rateLimiting = rateLimiting
-		logger("rateLimiting 		of %s set to %v\n", nodeName, rateLimiting)
+		priceTable.logger("rateLimiting 		of %s set to %v\n", nodeName, rateLimiting)
 	}
 
 	if loadShedding, ok := options["loadShedding"].(bool); ok {
 		priceTable.loadShedding = loadShedding
-		logger("loadShedding 		of %s set to %v\n", nodeName, loadShedding)
+		priceTable.logger("loadShedding 		of %s set to %v\n", nodeName, loadShedding)
 	}
 
 	if pinpointThroughput, ok := options["pinpointThroughput"].(bool); ok {
 		priceTable.pinpointThroughput = pinpointThroughput
-		logger("pinpointThroughput	of %s set to %v\n", nodeName, pinpointThroughput)
+		priceTable.logger("pinpointThroughput	of %s set to %v\n", nodeName, pinpointThroughput)
 	}
 
 	if pinpointLatency, ok := options["pinpointLatency"].(bool); ok {
 		priceTable.pinpointLatency = pinpointLatency
-		logger("pinpointLatency		of %s set to %v\n", nodeName, pinpointLatency)
+		priceTable.logger("pinpointLatency		of %s set to %v\n", nodeName, pinpointLatency)
 	}
 
 	if tokensLeft, ok := options["tokensLeft"].(int64); ok {
@@ -205,7 +206,7 @@ func (pt *PriceTable) tokenRefill() {
 		pt.tokensLeft += pt.tokenUpdateStep
 		pt.lastUpdateTime = time.Now()
 		pt.unblockRateLimiter()
-		logger("[TokenRefill]: Tokens refilled. Tokens left: %d\n", pt.tokensLeft)
+		pt.logger("[TokenRefill]: Tokens refilled. Tokens left: %d\n", pt.tokensLeft)
 	}
 }
 
@@ -229,10 +230,10 @@ func (pt *PriceTable) RateLimiting(ctx context.Context, tokens int64, methodName
 	servicePrice := servicePrice_string.(int64)
 
 	extratoken := tokens - servicePrice
-	logger("[Ratelimiting]: Checking Request. Token is %d, %s price is %d\n", tokens, downstreamName, servicePrice)
+	pt.logger("[Ratelimiting]: Checking Request. Token is %d, %s price is %d\n", tokens, downstreamName, servicePrice)
 
 	if extratoken < 0 {
-		logger("[Prepare Req]: Request blocked for lack of tokens.")
+		pt.logger("[Prepare Req]: Request blocked for lack of tokens.")
 		return RateLimited
 	}
 	return nil
@@ -297,10 +298,10 @@ func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName
 	var extratoken int64
 	extratoken = tokens - totalPrice
 
-	logger("[Received Req]:	Total price is %d, ownPrice is %d downstream price is %d\n", totalPrice, ownPrice, downstreamPrice)
+	pt.logger("[Received Req]:	Total price is %d, ownPrice is %d downstream price is %d\n", totalPrice, ownPrice, downstreamPrice)
 
 	if extratoken < 0 {
-		logger("[Received Req]: Request rejected for lack of tokens. ownPrice is %d downstream price is %d\n", ownPrice, downstreamPrice)
+		pt.logger("[Received Req]: Request rejected for lack of tokens. ownPrice is %d downstream price is %d\n", ownPrice, downstreamPrice)
 		return 0, InsufficientTokens
 	}
 
@@ -316,7 +317,7 @@ func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName
 	var tokenleft int64
 	tokenleft = tokens - ownPrice
 
-	logger("[Received Req]:	Own price updated to %d\n", ownPrice)
+	pt.logger("[Received Req]:	Own price updated to %d\n", ownPrice)
 
 	// totalPrice = ownPrice + downstreamPrice
 	// t.ptmap.Store("totalprice", totalPrice)
@@ -330,18 +331,18 @@ func (pt *PriceTable) SplitTokens(ctx context.Context, tokenleft int64, methodNa
 	// downstreamNames, _ := t.callMap.Load(methodName)
 	downstreamTokens := []string{}
 	downstreamPriceSum, _ := pt.RetrieveDSPrice(ctx, methodName)
-	logger("[Split tokens]:	downstream total price is %d\n", downstreamPriceSum)
+	pt.logger("[Split tokens]:	downstream total price is %d\n", downstreamPriceSum)
 
 	if downstreamNamesSlice, ok := downstreamNames.([]string); ok {
 		size := len(downstreamNamesSlice)
 		tokenleftPerDownstream := (tokenleft - downstreamPriceSum) / int64(size)
-		logger("[Split tokens]:	extra token left for each ds is %d\n", tokenleftPerDownstream)
+		pt.logger("[Split tokens]:	extra token left for each ds is %d\n", tokenleftPerDownstream)
 		for _, downstreamName := range downstreamNamesSlice {
 			downstreamPriceString, _ := pt.priceTableMap.LoadOrStore(downstreamName, int64(0))
 			downstreamPrice := downstreamPriceString.(int64)
 			downstreamToken := tokenleftPerDownstream + downstreamPrice
 			downstreamTokens = append(downstreamTokens, "tokens-"+downstreamName, strconv.FormatInt(downstreamToken, 10))
-			logger("[Split tokens]:	token for %s is %d + %d\n", downstreamName, tokenleftPerDownstream, downstreamPrice)
+			pt.logger("[Split tokens]:	token for %s is %d + %d\n", downstreamName, tokenleftPerDownstream, downstreamPrice)
 		}
 	}
 	return downstreamTokens, nil
@@ -352,13 +353,13 @@ func (pt *PriceTable) UpdatePrice(ctx context.Context, method string, downstream
 
 	// Update the downstream price.
 	pt.priceTableMap.Store(method, downstreamPrice)
-	logger("[Received Resp]:	Downstream price of %s updated to %d\n", method, downstreamPrice)
+	pt.logger("[Received Resp]:	Downstream price of %s updated to %d\n", method, downstreamPrice)
 
 	// var totalPrice int64
 	// ownPrice, _ := t.ptmap.LoadOrStore("ownprice", t.initprice)
 	// totalPrice = ownPrice.(int64) + downstreamPrice
 	// t.ptmap.Store("totalprice", totalPrice)
-	// logger("[Received Resp]:	Total price updated to %d\n", totalPrice)
+	// pt.logger("[Received Resp]:	Total price updated to %d\n", totalPrice)
 	return downstreamPrice, nil
 }
 
@@ -366,8 +367,8 @@ func (pt *PriceTable) UpdatePrice(ctx context.Context, method string, downstream
 func (pt *PriceTable) UnaryInterceptorClient(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 
 	// Jiali: the following line print the method name of the req/response, will be used to update the
-	// logger("[Before Req]:	The method name for price table is ")
-	// logger(method)
+	// pt.logger("[Before Req]:	The method name for price table is ")
+	// pt.logger(method)
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
 	ctx = metadata.AppendToOutgoingContext(ctx, "name", pt.nodeName)
 	var header metadata.MD // variable to store header and trailer
@@ -378,7 +379,7 @@ func (pt *PriceTable) UnaryInterceptorClient(ctx context.Context, method string,
 	if len(header["price"]) > 0 {
 		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
 		pt.UpdatePrice(ctx, header["name"][0], priceDownstream)
-		logger("[After Resp]:	The price table is from %s\n", header["name"])
+		pt.logger("[After Resp]:	The price table is from %s\n", header["name"])
 	}
 
 	return err
@@ -387,8 +388,8 @@ func (pt *PriceTable) UnaryInterceptorClient(ctx context.Context, method string,
 // unaryInterceptor is an example unary interceptor.
 func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 
-	// logger("[Before Req]:	The method name for price table is ")
-	// logger(method)
+	// pt.logger("[Before Req]:	The method name for price table is ")
+	// pt.logger(method)
 
 	// rand.Seed(time.Now().UnixNano())
 	// tok := rand.Intn(30)
@@ -423,7 +424,7 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 	if len(header["price"]) > 0 {
 		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
 		pt.UpdatePrice(ctx, header["name"][0], priceDownstream)
-		logger("[After Resp]:	The price table is from %s\n", header["name"])
+		pt.logger("[After Resp]:	The price table is from %s\n", header["name"])
 	}
 	return err
 }
@@ -433,14 +434,16 @@ var (
 )
 
 // logger is to mock a sophisticated logging system. To simplify the example, we just print out the content.
-func logger(format string, a ...interface{}) {
-	// fmt.Printf("LOG:\t"+format+"\n", a...)
+func (pt *PriceTable) logger(format string, a ...interface{}) {
+	if pt.debug {
+		fmt.Printf("LOG:\t"+format+"\n", a...)
+	}
 }
 
-func getMethodInfo(ctx context.Context) {
-	methodName, _ := grpc.Method(ctx)
-	logger(methodName)
-}
+// func getMethodInfo(ctx context.Context) {
+// 	methodName, _ := grpc.Method(ctx)
+// 	logger(methodName)
+// }
 
 func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	// This is the server side interceptor, it should check tokens, update price, do overload handling and attach price to response
@@ -452,20 +455,20 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	}
 
 	// getMethodInfo(ctx)
-	logger("[Received Req]:	The sender's name for request is %s\n", md["name"])
-	// logger(info.FullMethod)
+	pt.logger("[Received Req]:	The sender's name for request is %s\n", md["name"])
+	// pt.logger(info.FullMethod)
 
 	// Jiali: overload handler, do AQM, deduct the tokens on the request, update price info
-	// logger("[Received Req]:	tokens are %s\n", md["tokens"])
+	// pt.logger("[Received Req]:	tokens are %s\n", md["tokens"])
 	// tok, err := strconv.ParseInt(md["tokens"][0], 10, 64)
 	var tok int64
 	var err error
 
 	if val, ok := md["tokens-"+pt.nodeName]; ok {
-		logger("[Received Req]:	tokens for %s are %s\n", pt.nodeName, val)
+		pt.logger("[Received Req]:	tokens for %s are %s\n", pt.nodeName, val)
 		tok, err = strconv.ParseInt(val[0], 10, 64)
 	} else {
-		logger("[Received Req]:	tokens are %s\n", md["tokens"])
+		pt.logger("[Received Req]:	tokens are %s\n", md["tokens"])
 		tok, err = strconv.ParseInt(md["tokens"][0], 10, 64)
 	}
 
@@ -474,11 +477,11 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	if err == InsufficientTokens && pt.loadShedding {
 		price_string, _ := pt.RetrieveTotalPrice(ctx, "echo")
 		header := metadata.Pairs("price", price_string, "name", pt.nodeName)
-		logger("[Sending Error Resp]:	Total price is %s\n", price_string)
+		pt.logger("[Sending Error Resp]:	Total price is %s\n", price_string)
 		grpc.SendHeader(ctx, header)
 
 		totalLatency := time.Since(startTime)
-		logger("[Server-side Timer] Processing Duration is: %.2d milliseconds\n", totalLatency.Milliseconds())
+		pt.logger("[Server-side Timer] Processing Duration is: %.2d milliseconds\n", totalLatency.Milliseconds())
 
 		if pt.pinpointLatency {
 			if totalLatency > pt.observedDelay {
@@ -494,7 +497,7 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	}
 
 	tok_string := strconv.FormatInt(tokenleft, 10)
-	logger("[Preparing Sub Req]:	Token left is %s\n", tok_string)
+	pt.logger("[Preparing Sub Req]:	Token left is %s\n", tok_string)
 
 	// [critical] Jiali: Being outgoing seems to be critical for us.
 	// Jiali: we need to attach the token info to the context, so that the downstream can retrieve it.
@@ -513,11 +516,11 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	price_string, _ := pt.RetrieveTotalPrice(ctx, "echo")
 
 	header := metadata.Pairs("price", price_string, "name", pt.nodeName)
-	logger("[Preparing Resp]:	Total price is %s\n", price_string)
+	pt.logger("[Preparing Resp]:	Total price is %s\n", price_string)
 	grpc.SendHeader(ctx, header)
 
 	totalLatency := time.Since(startTime)
-	logger("[Server-side Timer] Processing Duration is: %.2d milliseconds\n", totalLatency.Milliseconds())
+	pt.logger("[Server-side Timer] Processing Duration is: %.2d milliseconds\n", totalLatency.Milliseconds())
 
 	if pt.pinpointLatency {
 		if totalLatency > pt.observedDelay {
@@ -526,11 +529,12 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	}
 
 	if err != nil {
-		logger("RPC failed with error %v", err)
+		pt.logger("RPC failed with error %v", err)
 	}
 	return m, err
 }
 
+/*
 // wrappedStream wraps around the embedded grpc.ServerStream, and intercepts the RecvMsg and
 // SendMsg method call.
 type wrappedStream struct {
@@ -564,3 +568,4 @@ func StreamInterceptor(srv interface{}, ss grpc.ServerStream, info *grpc.StreamS
 	}
 	return err
 }
+*/
