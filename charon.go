@@ -273,7 +273,7 @@ func (pt *PriceTable) UpdateOwnPrice(ctx context.Context, congestion bool) error
 	ownPrice := ownPrice_string.(int64)
 	// The following code has been moved to decrementCounter() for pinpointThroughput.
 	if congestion {
-		// ownPrice += 1
+		ownPrice += 1
 	} else if ownPrice > 0 {
 		ownPrice -= 1
 	}
