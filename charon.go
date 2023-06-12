@@ -155,6 +155,14 @@ func NewCharon(nodeName string, callmap map[string]interface{}, options map[stri
 		priceTable.latencySLO = latencySLO
 	}
 
+	if throughputThreshold, ok := options["throughputThreshold"].(int64); ok {
+		priceTable.throughputThreshold = throughputThreshold
+	}
+
+	if latencyThreshold, ok := options["latencyThreshold"].(time.Duration); ok {
+		priceTable.latencyThreshold = latencyThreshold
+	}
+
 	if debug, ok := options["debug"].(bool); ok {
 		priceTable.debug = debug
 	}
@@ -321,10 +329,8 @@ func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName
 	var tokenleft int64
 	tokenleft = tokens - ownPrice
 
-	pt.logger("[Received Req]:	Own price updated to %d\n", ownPrice)
+	// pt.logger("[Received Req]:	Own price updated to %d\n", ownPrice)
 
-	// totalPrice = ownPrice + downstreamPrice
-	// t.ptmap.Store("totalprice", totalPrice)
 	return tokenleft, nil
 }
 
@@ -487,14 +493,15 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 		totalLatency := time.Since(startTime)
 		pt.logger("[Server-side Timer] Processing Duration is: %.2d milliseconds\n", totalLatency.Milliseconds())
 
-		if pt.pinpointLatency {
-			if totalLatency > pt.observedDelay {
-				pt.observedDelay = totalLatency // update the observed delay
-			}
-		}
+		// if pt.pinpointLatency {
+		// 	if totalLatency > pt.observedDelay {
+		// 		pt.observedDelay = totalLatency // update the observed delay
+		// 	}
+		// }
 		// return nil, status.Errorf(codes.ResourceExhausted, "req dropped, try again later")
 		return nil, status.Errorf(codes.ResourceExhausted, "%d token for %s price. req dropped, try again later", tok, price_string)
-	} else if err != nil {
+	}
+	if err != nil && err != InsufficientTokens {
 		// The limiter failed. This error should be logged and examined.
 		log.Println(err)
 		return nil, status.Error(codes.Internal, "internal error")
