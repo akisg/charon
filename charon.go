@@ -196,7 +196,8 @@ func (pt *PriceTable) latencyCheck() {
 	for range time.Tick(pt.priceUpdateRate) {
 		// Create an empty context
 		ctx := context.Background()
-		pt.UpdateOwnPrice(ctx, pt.observedDelay > pt.latencyThreshold)
+		// change to using the average latency
+		pt.UpdateOwnPrice(ctx, pt.observedDelay.Milliseconds() > pt.latencyThreshold.Milliseconds()*pt.GetCount())
 		pt.observedDelay = time.Duration(0)
 	}
 }
@@ -534,9 +535,13 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	pt.logger("[Server-side Timer] Processing Duration is: %.2d milliseconds\n", totalLatency.Milliseconds())
 
 	if pt.pinpointLatency {
-		if totalLatency > pt.observedDelay {
-			pt.observedDelay = totalLatency // update the observed delay
-		}
+		// if totalLatency > pt.observedDelay {
+		// 	pt.observedDelay = totalLatency // update the observed delay
+		// }
+
+		// change the observed delay to the average latency, first, sum the latency and increment the counter
+		pt.Increment()
+		pt.observedDelay += totalLatency
 	}
 
 	if err != nil {
