@@ -379,21 +379,20 @@ func (pt *PriceTable) UpdatePrice(ctx context.Context, method string, downstream
 
 // unaryInterceptor is an example unary interceptor.
 func (pt *PriceTable) UnaryInterceptorClient(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-	outgoingCtx := ctx
 	// Jiali: the following line print the method name of the req/response, will be used to update the
 	// pt.logger(ctx, "[Before Req]:	The method name for price table is ")
 	// pt.logger(ctx, method)
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
-	outgoingCtx = metadata.AppendToOutgoingContext(outgoingCtx, "name", pt.nodeName)
+	ctx = metadata.AppendToOutgoingContext(ctx, "name", pt.nodeName)
 	var header metadata.MD // variable to store header and trailer
-	err := invoker(outgoingCtx, method, req, reply, cc, grpc.Header(&header))
+	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
 	// err := invoker(ctx, method, req, reply, cc, opts...)
 
 	// Jiali: after replied. update and store the price info for future
 	if len(header["price"]) > 0 {
 		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
-		pt.UpdatePrice(outgoingCtx, header["name"][0], priceDownstream)
-		pt.logger(outgoingCtx, "[After Resp]:	The price table is from %s\n", header["name"])
+		pt.UpdatePrice(ctx, header["name"][0], priceDownstream)
+		pt.logger(ctx, "[After Resp]:	The price table is from %s\n", header["name"])
 	}
 
 	return err
@@ -408,7 +407,6 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 	// rand.Seed(time.Now().UnixNano())
 	// tok := rand.Intn(30)
 	// tok_string := strconv.Itoa(tok)
-	outgoingCtx := ctx
 
 	var tok int64
 
@@ -419,7 +417,7 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 		if !pt.rateLimiting {
 			break
 		}
-		ratelimit := pt.RateLimiting(outgoingCtx, tok, "echo")
+		ratelimit := pt.RateLimiting(ctx, tok, "echo")
 		if ratelimit == RateLimited {
 			// return ratelimit
 			<-pt.rateLimiter
@@ -430,16 +428,16 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 
 	pt.tokensLeft -= tok
 	tok_string := strconv.FormatInt(tok, 10)
-	outgoingCtx = metadata.AppendToOutgoingContext(outgoingCtx, "tokens", tok_string, "name", pt.nodeName)
+	ctx = metadata.AppendToOutgoingContext(ctx, "tokens", tok_string, "name", pt.nodeName)
 
 	var header metadata.MD // variable to store header and trailer
-	err := invoker(outgoingCtx, method, req, reply, cc, grpc.Header(&header))
+	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
 
 	// Jiali: after replied. update and store the price info for future
 	if len(header["price"]) > 0 {
 		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
-		pt.UpdatePrice(outgoingCtx, header["name"][0], priceDownstream)
-		pt.logger(outgoingCtx, "[After Resp]:	The price table is from %s\n", header["name"])
+		pt.UpdatePrice(ctx, header["name"][0], priceDownstream)
+		pt.logger(ctx, "[After Resp]:	The price table is from %s\n", header["name"])
 	}
 	return err
 }
@@ -470,14 +468,13 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	// This is the server side interceptor, it should check tokens, update price, do overload handling and attach price to response
 	startTime := time.Now()
 
-	outgoingCtx := ctx
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		return nil, errMissingMetadata
 	}
 
 	// getMethodInfo(ctx)
-	pt.logger(outgoingCtx, "[Received Req]:	The sender's name for request is %s\n", md["name"])
+	pt.logger(ctx, "[Received Req]:	The sender's name for request is %s\n", md["name"])
 	// pt.logger(ctx, info.FullMethod)
 
 	// Jiali: overload handler, do AQM, deduct the tokens on the request, update price info
@@ -487,23 +484,23 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	var err error
 
 	if val, ok := md["tokens-"+pt.nodeName]; ok {
-		pt.logger(outgoingCtx, "[Received Req]:	tokens for %s are %s\n", pt.nodeName, val)
+		pt.logger(ctx, "[Received Req]:	tokens for %s are %s\n", pt.nodeName, val)
 		tok, err = strconv.ParseInt(val[0], 10, 64)
 	} else {
-		pt.logger(outgoingCtx, "[Received Req]:	tokens are %s\n", md["tokens"])
+		pt.logger(ctx, "[Received Req]:	tokens are %s\n", md["tokens"])
 		tok, err = strconv.ParseInt(md["tokens"][0], 10, 64)
 	}
 
 	// overload handler:
-	tokenleft, err := pt.LoadShedding(outgoingCtx, tok, "echo")
+	tokenleft, err := pt.LoadShedding(ctx, tok, "echo")
 	if err == InsufficientTokens && pt.loadShedding {
-		price_string, _ := pt.RetrieveTotalPrice(outgoingCtx, "echo")
+		price_string, _ := pt.RetrieveTotalPrice(ctx, "echo")
 		header := metadata.Pairs("price", price_string, "name", pt.nodeName)
-		pt.logger(outgoingCtx, "[Sending Error Resp]:	Total price is %s\n", price_string)
-		grpc.SendHeader(outgoingCtx, header)
+		pt.logger(ctx, "[Sending Error Resp]:	Total price is %s\n", price_string)
+		grpc.SendHeader(ctx, header)
 
 		totalLatency := time.Since(startTime)
-		pt.logger(outgoingCtx, "[Server-side Timer] Processing Duration is: %.2d milliseconds\n", totalLatency.Milliseconds())
+		pt.logger(ctx, "[Server-side Timer] Processing Duration is: %.2d milliseconds\n", totalLatency.Milliseconds())
 
 		// if pt.pinpointLatency {
 		// 	if totalLatency > pt.observedDelay {
@@ -520,31 +517,31 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	}
 
 	tok_string := strconv.FormatInt(tokenleft, 10)
-	pt.logger(outgoingCtx, "[Preparing Sub Req]:	Token left is %s\n", tok_string)
+	pt.logger(ctx, "[Preparing Sub Req]:	Token left is %s\n", tok_string)
 
 	// [critical] Jiali: Being outgoing seems to be critical for us.
 	// Jiali: we need to attach the token info to the context, so that the downstream can retrieve it.
 	// ctx = metadata.AppendToOutgoingContext(ctx, "tokens", tok_string)
 	// Jiali: we actually need multiple kv pairs for the token information, because one context is sent to multiple downstreams.
-	downstreamTokens, _ := pt.SplitTokens(outgoingCtx, tokenleft, "echo")
+	downstreamTokens, _ := pt.SplitTokens(ctx, tokenleft, "echo")
 
-	outgoingCtx = metadata.AppendToOutgoingContext(outgoingCtx, downstreamTokens...)
+	ctx = metadata.AppendToOutgoingContext(ctx, downstreamTokens...)
 
 	// ctx = metadata.NewOutgoingContext(ctx, md)
 
-	m, err := handler(outgoingCtx, req)
+	m, err := handler(ctx, req)
 
 	// Attach the price info to response before sending
 	// right now let's just propagate the corresponding price of the RPC method rather than a whole pricetable.
 	// totalPrice_string, _ := PriceTableInstance.ptmap.Load("totalprice")
-	price_string, _ := pt.RetrieveTotalPrice(outgoingCtx, "echo")
+	price_string, _ := pt.RetrieveTotalPrice(ctx, "echo")
 
 	header := metadata.Pairs("price", price_string, "name", pt.nodeName)
-	pt.logger(outgoingCtx, "[Preparing Resp]:	Total price is %s\n", price_string)
-	grpc.SendHeader(outgoingCtx, header)
+	pt.logger(ctx, "[Preparing Resp]:	Total price is %s\n", price_string)
+	grpc.SendHeader(ctx, header)
 
 	totalLatency := time.Since(startTime)
-	pt.logger(outgoingCtx, "[Server-side Timer] Processing Duration is: %.2d milliseconds\n", totalLatency.Milliseconds())
+	pt.logger(ctx, "[Server-side Timer] Processing Duration is: %.2d milliseconds\n", totalLatency.Milliseconds())
 
 	if pt.pinpointLatency {
 		// if totalLatency > pt.observedDelay {
@@ -557,7 +554,7 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	}
 
 	if err != nil {
-		pt.logger(outgoingCtx, "RPC failed with error %v", err)
+		pt.logger(ctx, "RPC failed with error %v", err)
 	}
 	return m, err
 }
