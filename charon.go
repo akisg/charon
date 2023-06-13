@@ -111,6 +111,7 @@ func NewCharon(nodeName string, callmap map[string]interface{}, options map[stri
 		throughputThreshold: 20,
 		latencyThreshold:    time.Millisecond * 16,
 		debug:               false,
+		debugFreq:           4000,
 	}
 
 	if initprice, ok := options["initprice"].(int64); ok {
