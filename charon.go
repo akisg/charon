@@ -118,7 +118,7 @@ func NewCharon(nodeName string, callmap map[string]interface{}, options map[stri
 		priceTable.initprice = initprice
 		// print the initprice of the node if the name is not client
 		if nodeName != "client" {
-			fmt.Printf("initprice of %s set to %d\n", nodeName, initprice)
+			fmt.Printf("initprice of %s set to %d\n", nodeName, priceTable.initprice)
 		}
 	}
 
@@ -278,7 +278,7 @@ func (pt *PriceTable) RetrieveDSPrice(ctx context.Context, methodName string) (i
 	// var downstreamPrice int64
 	if downstreamNamesSlice, ok := downstreamNames.([]string); ok {
 		for _, downstreamName := range downstreamNamesSlice {
-			downstreamPriceString, _ := pt.priceTableMap.LoadOrStore(downstreamName, int64(0))
+			downstreamPriceString, _ := pt.priceTableMap.LoadOrStore(downstreamName, pt.initprice)
 			downstreamPrice := downstreamPriceString.(int64)
 			downstreamPriceSum += downstreamPrice
 		}
