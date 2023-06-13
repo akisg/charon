@@ -49,6 +49,7 @@ type PriceTable struct {
 	throughputThreshold int64
 	latencyThreshold    time.Duration
 	debug               bool
+	debugFreq           int64
 }
 
 // NewPriceTable creates a new instance of PriceTable.
@@ -73,6 +74,7 @@ func NewPriceTable(initprice int64, nodeName string, callmap map[string]interfac
 		observedDelay:      time.Duration(0),
 		latencySLO:         time.Millisecond * 20,
 		debug:              false,
+		debugFreq:          4000,
 	}
 	// priceTable.rateLimiter <- 1
 	// Only refill the tokens when the interceptor is for enduser.
@@ -113,6 +115,10 @@ func NewCharon(nodeName string, callmap map[string]interface{}, options map[stri
 
 	if initprice, ok := options["initprice"].(int64); ok {
 		priceTable.initprice = initprice
+		// print the initprice of the node if the name is not client
+		if nodeName != "client" {
+			fmt.Printf("initprice of %s set to %d\n", nodeName, initprice)
+		}
 	}
 
 	ctx := context.Background()
@@ -167,6 +173,14 @@ func NewCharon(nodeName string, callmap map[string]interface{}, options map[stri
 
 	if debug, ok := options["debug"].(bool); ok {
 		priceTable.debug = debug
+	}
+
+	if debugFreq, ok := options["debugFreq"].(int64); ok {
+		priceTable.debugFreq = debugFreq
+		// print the debug and debugFreq of the node if the name is not client
+		if nodeName != "client" {
+			fmt.Printf("debug and debugFreq of %s set to %v and %v\n", nodeName, priceTable.debug, debugFreq)
+		}
 	}
 
 	// Rest of the code remains the same
@@ -380,13 +394,12 @@ func (pt *PriceTable) UpdatePrice(ctx context.Context, method string, downstream
 // unaryInterceptor is an example unary interceptor.
 func (pt *PriceTable) UnaryInterceptorClient(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	// Jiali: the following line print the method name of the req/response, will be used to update the
-	// pt.logger(ctx, "[Before Req]:	The method name for price table is ")
-	// pt.logger(ctx, method)
+	pt.logger(ctx, "[Before Sub Req]:	The method name is %s\n", method)
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
+	// overwrite rather than append to the header with the node name of this client
 	ctx = metadata.AppendToOutgoingContext(ctx, "name", pt.nodeName)
 	var header metadata.MD // variable to store header and trailer
 	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
-	// err := invoker(ctx, method, req, reply, cc, opts...)
 
 	// Jiali: after replied. update and store the price info for future
 	if len(header["price"]) > 0 {
@@ -452,7 +465,7 @@ func (pt *PriceTable) logger(ctx context.Context, format string, a ...interface{
 		md, ok := metadata.FromIncomingContext(ctx)
 		if ok {
 			reqid, _ := strconv.ParseInt(md["request-id"][0], 10, 64)
-			if reqid%2000 == 0 {
+			if reqid%pt.debugFreq == 0 {
 				fmt.Printf("LOG:\t"+format+"\n", a...)
 			}
 		}
@@ -473,21 +486,29 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 		return nil, errMissingMetadata
 	}
 
-	// getMethodInfo(ctx)
-	pt.logger(ctx, "[Received Req]:	The sender's name for request is %s\n", md["name"])
-	// pt.logger(ctx, info.FullMethod)
+	// print all the k-v pairs in the metadata md
+	// pt.logger(ctx, "[Received Req]:	The sender's name for request is %s\n", md["name"])
+	for k, v := range md {
+		pt.logger(ctx, "[Received Req]:	The metadata for request is %s: %s\n", k, v)
+	}
 
 	// Jiali: overload handler, do AQM, deduct the tokens on the request, update price info
-	// pt.logger(ctx, "[Received Req]:	tokens are %s\n", md["tokens"])
-	// tok, err := strconv.ParseInt(md["tokens"][0], 10, 64)
 	var tok int64
 	var err error
 
 	if val, ok := md["tokens-"+pt.nodeName]; ok {
 		pt.logger(ctx, "[Received Req]:	tokens for %s are %s\n", pt.nodeName, val)
+		// raise error if the val length is not 1
+		if len(val) != 1 {
+			return nil, status.Errorf(codes.InvalidArgument, "duplicated tokens")
+		}
 		tok, err = strconv.ParseInt(val[0], 10, 64)
 	} else {
 		pt.logger(ctx, "[Received Req]:	tokens are %s\n", md["tokens"])
+		// raise error if the tokens length is not 1
+		if len(md["tokens"]) != 1 {
+			return nil, status.Errorf(codes.InvalidArgument, "duplicated tokens")
+		}
 		tok, err = strconv.ParseInt(md["tokens"][0], 10, 64)
 	}
 
