@@ -525,7 +525,9 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	// ctx = metadata.AppendToOutgoingContext(ctx, "tokens", tok_string)
 	// Jiali: we actually need multiple kv pairs for the token information, because one context is sent to multiple downstreams.
 	downstreamTokens, _ := pt.SplitTokens(ctx, tokenleft, "echo")
-	ctx = metadata.AppendToOutgoingContext(ctx, downstreamTokens...)
+
+	outgoingCtx := ctx
+	ctx = metadata.AppendToOutgoingContext(outgoingCtx, downstreamTokens...)
 
 	// ctx = metadata.NewOutgoingContext(ctx, md)
 
