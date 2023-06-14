@@ -248,8 +248,10 @@ func medianBucket(h *metrics.Float64Histogram) float64 {
 	panic("should not happen")
 }
 
-// To extract the difference between two Float64Histogram distributions,
+// To extract the difference between two pointers of Float64Histogram distributions, and return a new Float64Histogram pointer
 // you can subtract the corresponding bucket counts of the two histograms.
+// If the earlier histogram is an empty pointer, return the later histogram
+// Ensure the two histograms have the same number of buckets
 func GetHistogramDifference(earlier, later *metrics.Float64Histogram) *metrics.Float64Histogram {
 	// if the earlier histogram is an empty pointer, return the later histogram
 	if earlier == nil {
@@ -268,14 +270,46 @@ func GetHistogramDifference(earlier, later *metrics.Float64Histogram) *metrics.F
 	}
 
 	// Calculate the difference between the bucket counts and return the gap histogram
-	diff := metrics.Float64Histogram{}
-	for i := range earlier.Counts {
-		diff.Counts[i] = later.Counts[i] - earlier.Counts[i]
-		diff.Buckets[i] = earlier.Buckets[i]
+	// diff := metrics.Float64Histogram{}
+
+	// Create a new histogram for the difference
+	diff := metrics.Float64Histogram{
+		Counts:  make([]uint64, len(earlier.Counts)),
+		Buckets: earlier.Buckets, // Assuming Buckets are the same for both histograms
 	}
 
+	for i := range earlier.Counts {
+		diff.Counts[i] = later.Counts[i] - earlier.Counts[i]
+	}
 	return &diff
 }
+
+// func GetHistogramDifference(earlier, later *metrics.Float64Histogram) *metrics.Float64Histogram {
+// 	// if the earlier histogram is an empty pointer, return the later histogram
+// 	if earlier == nil {
+// 		return later
+// 	}
+
+// 	// Ensure the two histograms have the same number of buckets
+// 	if len(earlier.Counts) != len(later.Counts) {
+// 		panic("histograms have different number of buckets")
+// 	}
+
+// 	// if either the earlier or later histogram is empty, panic
+// 	if len(earlier.Counts) == 0 || len(later.Counts) == 0 {
+// 		panic("histogram has no buckets")
+// 		// return &metrics.Float64Histogram{}
+// 	}
+
+// 	// Calculate the difference between the bucket counts and return the gap histogram
+// 	diff := metrics.Float64Histogram{}
+// 	for i := range earlier.Counts {
+// 		diff.Counts[i] = later.Counts[i] - earlier.Counts[i]
+// 		diff.Buckets[i] = earlier.Buckets[i]
+// 	}
+
+// 	return &diff
+// }
 
 // queuingCheck checks if the queuing delay of go routine is greater than the latency SLO.
 func (pt *PriceTable) queuingCheck() {
