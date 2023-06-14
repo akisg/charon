@@ -248,8 +248,33 @@ func medianBucket(h *metrics.Float64Histogram) float64 {
 	panic("should not happen")
 }
 
+// To extract the difference between two Float64Histogram distributions,
+// you can subtract the corresponding bucket counts of the two histograms.
+func GetHistogramDifference(earlier, later *metrics.Float64Histogram) *metrics.Float64Histogram {
+	// if the earlier histogram is empty (length is 0), return the later histogram
+	if len(earlier.Counts) == 0 {
+		return later
+	}
+
+	// Ensure the two histograms have the same number of buckets
+	if len(earlier.Counts) != len(later.Counts) {
+		panic("histograms have different number of buckets")
+	}
+
+	// Calculate the difference between the bucket counts and return the gap histogram
+	diff := metrics.Float64Histogram{}
+	for i := range earlier.Counts {
+		diff.Counts[i] = later.Counts[i] - earlier.Counts[i]
+		diff.Buckets[i] = earlier.Buckets[i]
+	}
+
+	return &diff
+}
+
 // queuingCheck checks if the queuing delay of go routine is greater than the latency SLO.
 func (pt *PriceTable) queuingCheck() {
+	// init a null histogram
+	var prevHist *metrics.Float64Histogram
 	for range time.Tick(pt.priceUpdateRate) {
 		// create a new incoming context with the "request-id" as "0"
 		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
@@ -269,15 +294,18 @@ func (pt *PriceTable) queuingCheck() {
 			panic(fmt.Sprintf("metric %q no longer supported", queueingDelay))
 		}
 
-		// Handle the result.
-		//
-		// It's OK to assume a particular Kind for a metric;
-		// they're guaranteed not to change.
-		value := sample[0].Value
-		pt.logger(ctx, "[Sampled Waiting Time/%s]:	%f\n", queueingDelay, medianBucket(value.Float64Histogram()))
+		// get the current histogram
+		currHist := sample[0].Value.Float64Histogram()
+		// calculate the differernce between the two histograms prevHist and currHist
+		diff := GetHistogramDifference(prevHist, currHist)
 
-		// pt.UpdateOwnPrice(ctx, pt.observedDelay.Milliseconds() > pt.latencySLO.Milliseconds()*pt.GetCount())
-		// pt.observedDelay = time.Duration(0)
+		// medianLatency is the median of the histogram in milliseconds.
+		medianLatency := medianBucket(diff) * 1000
+		pt.logger(ctx, "[Sampled Waiting Time/%s]:	%f ms.\n", queueingDelay, medianLatency)
+
+		pt.UpdateOwnPrice(ctx, int64(medianLatency) > pt.latencySLO.Milliseconds())
+		// update the previous histogram to be current histogram
+		prevHist = currHist
 	}
 }
 
