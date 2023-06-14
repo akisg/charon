@@ -230,6 +230,25 @@ func (pt *PriceTable) latencyCheck() {
 	}
 }
 
+// Calculate the average value from the Float64Histogram
+func CalculateAverage(histogram metrics.Float64Histogram) float64 {
+	totalSum := float64(0)
+	totalCount := uint64(0)
+
+	for i, count := range histogram.Counts {
+		bucketWidth := histogram.Buckets[i+1] - histogram.Buckets[i]
+		bucketSum := float64(count) * bucketWidth
+		totalSum += bucketSum
+		totalCount += count
+	}
+
+	if totalCount == 0 {
+		return 0
+	}
+
+	return totalSum / float64(totalCount)
+}
+
 // queuingCheck checks if the queuing delay of go routine is greater than the latency SLO.
 func (pt *PriceTable) queuingCheck() {
 	for range time.Tick(pt.priceUpdateRate) {
@@ -255,7 +274,8 @@ func (pt *PriceTable) queuingCheck() {
 		//
 		// It's OK to assume a particular Kind for a metric;
 		// they're guaranteed not to change.
-		waitingTime := sample[0].Value.Uint64()
+		waitingTimeHist := sample[0].Value.Float64Histogram()
+		waitingTime := CalculateAverage(*waitingTimeHist)
 
 		pt.logger(ctx, "[Sampled Waiting Time]:	%d\n", waitingTime)
 
