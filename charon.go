@@ -36,6 +36,7 @@ type PriceTable struct {
 	loadShedding       bool
 	pinpointThroughput bool
 	pinpointLatency    bool
+	pinpointQueuing    bool
 	rateLimiter        chan int64
 	// updateRate is the rate at which price should be updated at least once.
 	tokensLeft          int64
@@ -61,9 +62,10 @@ func NewPriceTable(initprice int64, nodeName string, callmap map[string]interfac
 		callMap:            callmap,
 		priceTableMap:      sync.Map{},
 		rateLimiting:       false,
-		loadShedding:       true,
+		loadShedding:       false,
 		pinpointThroughput: false,
-		pinpointLatency:    true,
+		pinpointLatency:    false,
+		pinpointQueuing:    false,
 		rateLimiter:        make(chan int64, 1),
 		tokensLeft:         10,
 		tokenUpdateRate:    time.Millisecond * 10,
@@ -95,10 +97,11 @@ func NewCharon(nodeName string, callmap map[string]interface{}, options map[stri
 		nodeName:            nodeName,
 		callMap:             callmap,
 		priceTableMap:       sync.Map{},
-		rateLimiting:        true,
-		loadShedding:        true,
+		rateLimiting:        false,
+		loadShedding:        false,
 		pinpointThroughput:  false,
-		pinpointLatency:     true,
+		pinpointLatency:     false,
+		pinpointQueuing:     false,
 		rateLimiter:         make(chan int64, 1),
 		tokensLeft:          10,
 		tokenUpdateRate:     time.Millisecond * 10,
@@ -142,6 +145,11 @@ func NewCharon(nodeName string, callmap map[string]interface{}, options map[stri
 	if pinpointLatency, ok := options["pinpointLatency"].(bool); ok {
 		priceTable.pinpointLatency = pinpointLatency
 		priceTable.logger(ctx, "pinpointLatency		of %s set to %v\n", nodeName, pinpointLatency)
+	}
+
+	if pinpointQueuing, ok := options["pinpointQueuing"].(bool); ok {
+		priceTable.pinpointQueuing = pinpointQueuing
+		priceTable.logger(ctx, "pinpointQueuing		of %s set to %v\n", nodeName, pinpointQueuing)
 	}
 
 	if tokensLeft, ok := options["tokensLeft"].(int64); ok {
@@ -190,6 +198,8 @@ func NewCharon(nodeName string, callmap map[string]interface{}, options map[stri
 	} else if priceTable.pinpointThroughput {
 		go priceTable.throughputCheck()
 	} else if priceTable.pinpointLatency {
+		go priceTable.latencyCheck()
+	} else if priceTable.pinpointQueuing {
 		go priceTable.latencyCheck()
 	}
 
@@ -549,7 +559,14 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 
 	ctx = metadata.AppendToOutgoingContext(ctx, downstreamTokens...)
 
-	// ctx = metadata.NewOutgoingContext(ctx, md)
+	queuingDelay := time.Since(startTime)
+	pt.logger(ctx, "[Server-side Timer] Queuing delay is: %.2d milliseconds\n", queuingDelay.Milliseconds())
+
+	if pt.pinpointQueuing {
+		// increment the counter and add the queuing delay to the observed delay
+		pt.Increment()
+		pt.observedDelay += queuingDelay
+	}
 
 	m, err := handler(ctx, req)
 
