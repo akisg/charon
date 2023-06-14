@@ -13,7 +13,6 @@ func medianBucket(h *metrics.Float64Histogram) float64 {
 		total += count
 	}
 
-	// thresh := total / 2
 	// round up thresh if total is odd
 	thresh := (total + 1) / 2
 	total = 0
@@ -25,6 +24,27 @@ func medianBucket(h *metrics.Float64Histogram) float64 {
 			return h.Buckets[i] * 1000
 		}
 	}
+	panic("should not happen")
+}
+
+func percentileBucket(h *metrics.Float64Histogram, percentile float64) float64 {
+	total := uint64(0)
+	for _, count := range h.Counts {
+		total += count
+	}
+
+	thresh := uint64(float64(total) * (percentile / 100.0))
+	total = 0
+
+	// Iterate through the histogram counts, starting from the second bucket
+	// and find the bucket that surpasses the threshold count.
+	for i := 1; i < len(h.Counts); i++ {
+		total += h.Counts[i]
+		if total >= thresh {
+			return h.Buckets[i] * 1000 // Convert to milliseconds
+		}
+	}
+
 	panic("should not happen")
 }
 
