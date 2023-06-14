@@ -232,119 +232,32 @@ func (pt *PriceTable) latencyCheck() {
 	}
 }
 
-func medianBucket(h *metrics.Float64Histogram) float64 {
-	total := uint64(0)
-	for _, count := range h.Counts {
-		total += count
-	}
-	thresh := total / 2
-	total = 0
-	for i, count := range h.Counts {
-		total += count
-		if total >= thresh {
-			return h.Buckets[i]
-		}
-	}
-	panic("should not happen")
-}
-
-// To extract the difference between two pointers of Float64Histogram distributions, and return a new Float64Histogram pointer
-// you can subtract the corresponding bucket counts of the two histograms.
-// If the earlier histogram is an empty pointer, return the later histogram
-// Ensure the two histograms have the same number of buckets
-func GetHistogramDifference(earlier, later *metrics.Float64Histogram) *metrics.Float64Histogram {
-	// if the earlier histogram is an empty pointer, return the later histogram
-	if earlier == nil {
-		return later
-	}
-
-	// Ensure the two histograms have the same number of buckets
-	if len(earlier.Counts) != len(later.Counts) {
-		panic("histograms have different number of buckets")
-	}
-
-	// if either the earlier or later histogram is empty, panic
-	if len(earlier.Counts) == 0 || len(later.Counts) == 0 {
-		panic("histogram has no buckets")
-		// return &metrics.Float64Histogram{}
-	}
-
-	// Calculate the difference between the bucket counts and return the gap histogram
-	// diff := metrics.Float64Histogram{}
-
-	// Create a new histogram for the difference
-	diff := metrics.Float64Histogram{
-		Counts:  make([]uint64, len(earlier.Counts)),
-		Buckets: earlier.Buckets, // Assuming Buckets are the same for both histograms
-	}
-
-	for i := range earlier.Counts {
-		diff.Counts[i] = later.Counts[i] - earlier.Counts[i]
-	}
-	return &diff
-}
-
-// func GetHistogramDifference(earlier, later *metrics.Float64Histogram) *metrics.Float64Histogram {
-// 	// if the earlier histogram is an empty pointer, return the later histogram
-// 	if earlier == nil {
-// 		return later
-// 	}
-
-// 	// Ensure the two histograms have the same number of buckets
-// 	if len(earlier.Counts) != len(later.Counts) {
-// 		panic("histograms have different number of buckets")
-// 	}
-
-// 	// if either the earlier or later histogram is empty, panic
-// 	if len(earlier.Counts) == 0 || len(later.Counts) == 0 {
-// 		panic("histogram has no buckets")
-// 		// return &metrics.Float64Histogram{}
-// 	}
-
-// 	// Calculate the difference between the bucket counts and return the gap histogram
-// 	diff := metrics.Float64Histogram{}
-// 	for i := range earlier.Counts {
-// 		diff.Counts[i] = later.Counts[i] - earlier.Counts[i]
-// 		diff.Buckets[i] = earlier.Buckets[i]
-// 	}
-
-// 	return &diff
-// }
-
 // queuingCheck checks if the queuing delay of go routine is greater than the latency SLO.
 func (pt *PriceTable) queuingCheck() {
 	// init a null histogram
 	var prevHist *metrics.Float64Histogram
 	for range time.Tick(pt.priceUpdateRate) {
-		// create a new incoming context with the "request-id" as "0"
-		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
-		const queueingDelay = "/sched/latencies:seconds"
-
-		// Create a sample for the metric.
-		sample := make([]metrics.Sample, 1)
-		sample[0].Name = queueingDelay
-
-		// Sample the metric.
-		metrics.Read(sample)
-
-		// Check if the metric is actually supported.
-		// If it's not, the resulting value will always have
-		// kind KindBad.
-		if sample[0].Value.Kind() == metrics.KindBad {
-			panic(fmt.Sprintf("metric %q no longer supported", queueingDelay))
-		}
-
 		// get the current histogram
-		currHist := sample[0].Value.Float64Histogram()
+		currHist := readHistogram()
+
 		// calculate the differernce between the two histograms prevHist and currHist
-		diff := GetHistogramDifference(prevHist, currHist)
-
+		diff := metrics.Float64Histogram{}
+		// if preHist is empty pointer, return currHist
+		if prevHist == nil {
+			diff = *currHist
+		} else {
+			diff = GetHistogramDifference(*prevHist, *currHist)
+		}
+		// printHistogram(&diff)
+		printHistogram(currHist)
 		// medianLatency is the median of the histogram in milliseconds.
-		medianLatency := medianBucket(diff) * 1000
-		pt.logger(ctx, "[Sampled Waiting Time/%s]:	%f ms.\n", queueingDelay, medianLatency)
+		medianLatency := medianBucket(&diff)
+		cmedianLatency := medianBucket(currHist)
 
-		pt.UpdateOwnPrice(ctx, int64(medianLatency) > pt.latencySLO.Milliseconds())
-		// update the previous histogram to be current histogram
+		fmt.Printf("[Sampled Cumulative Waiting Time]:	%f ms.\n", cmedianLatency)
+		fmt.Printf("[Sampled Difference Waiting Time]:	%f ms.\n", medianLatency)
+
+		// copy the content of current histogram to the previous histogram
 		prevHist = currHist
 	}
 }
