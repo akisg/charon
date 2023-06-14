@@ -118,7 +118,8 @@ func NewCharon(nodeName string, callmap map[string]interface{}, options map[stri
 		debugFreq:           4000,
 	}
 
-	ctx := context.WithValue(context.Background(), "request-id", 0)
+	// create a new incoming context with the "request-id" as "0"
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
 
 	if initprice, ok := options["initprice"].(int64); ok {
 		priceTable.initprice = initprice
@@ -189,7 +190,7 @@ func NewCharon(nodeName string, callmap map[string]interface{}, options map[stri
 		priceTable.debugFreq = debugFreq
 		// print the debug and debugFreq of the node if the name is not client
 		if nodeName != "client" {
-			fmt.Printf("debug and debugFreq of %s set to %v and %v\n", nodeName, priceTable.debug, debugFreq)
+			priceTable.logger(ctx, "debug and debugFreq of %s set to %v and %v\n", nodeName, priceTable.debug, debugFreq)
 		}
 	}
 
@@ -222,8 +223,9 @@ func (pt *PriceTable) GetCount() int64 {
 
 func (pt *PriceTable) latencyCheck() {
 	for range time.Tick(pt.priceUpdateRate) {
-		// Create an empty context
-		ctx := context.Background()
+		// create a new incoming context with the "request-id" as "0"
+		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
+
 		// change to using the average latency
 		pt.UpdateOwnPrice(ctx, pt.observedDelay.Milliseconds() > pt.latencyThreshold.Milliseconds()*pt.GetCount())
 		pt.observedDelay = time.Duration(0)
@@ -252,8 +254,8 @@ func CalculateAverage(histogram metrics.Float64Histogram) float64 {
 // queuingCheck checks if the queuing delay of go routine is greater than the latency SLO.
 func (pt *PriceTable) queuingCheck() {
 	for range time.Tick(pt.priceUpdateRate) {
-		// Create a new context with a key-value pair of `request-id` and `0`
-		ctx := context.WithValue(context.Background(), "request-id", 0)
+		// create a new incoming context with the "request-id" as "0"
+		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
 		const queueingDelay = "/sched/latencies:seconds"
 
 		// Create a sample for the metric.
