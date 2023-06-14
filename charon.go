@@ -251,8 +251,8 @@ func medianBucket(h *metrics.Float64Histogram) float64 {
 // To extract the difference between two Float64Histogram distributions,
 // you can subtract the corresponding bucket counts of the two histograms.
 func GetHistogramDifference(earlier, later *metrics.Float64Histogram) *metrics.Float64Histogram {
-	// if the earlier histogram is empty (length is 0), return the later histogram
-	if len(earlier.Counts) == 0 {
+	// if the earlier histogram is an empty pointer, return the later histogram
+	if earlier == nil {
 		return later
 	}
 
