@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"sync"
 	"time"
 
 	"github.com/tgiannoukos/charon"
@@ -74,14 +73,35 @@ func streamInterceptor(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.Clie
 	return newWrappedStream(s), nil
 }
 
-func callUnaryEcho(client ecpb.EchoClient, message string) {
+func callUnaryEcho(client ecpb.EchoClient, message string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	fmt.Println("About to send msg: ", message)
 	resp, err := client.UnaryEcho(ctx, &ecpb.EchoRequest{Message: message})
 	if err != nil {
 		log.Fatalf("client.UnaryEcho(_) = _, %v: ", err)
 	}
 	fmt.Println("UnaryEcho: ", resp.Message)
+	return err
+	// for retry := 0; retry < 5; retry++ {
+	// 	resp, err := client.UnaryEcho(ctx, &ecpb.EchoRequest{Message: message})
+
+	// 	if errors.Is(err, charon.RateLimited) {
+	// 		// Handle rate-limited error
+	// 		fmt.Println("Rate limit triggered. Try again later.")
+	// 		time.Sleep(time.Second) // Sleep for a sec before retrying
+	// 	} else if errors.Is(err, charon.InsufficientTokens) {
+	// 		// Handle dropped request error
+	// 		fmt.Println("Req dropped. Try again later.")
+	// 		break // Break out of the loop on non-rate-limited errors
+	// 	} else if err != nil {
+	// 		log.Fatalf("client.UnaryEcho(_) = _, %v: ", err)
+	// 		break // Break out of the loop on non-rate-limited errors
+	// 	} else {
+	// 		fmt.Println("UnaryEcho: ", resp.Message)
+	// 		break // Break out of the loop on non-rate-limited errors
+	// 	}
+	// }
 }
 
 func callBidiStreamingEcho(client ecpb.EchoClient) {
@@ -119,10 +139,16 @@ func main() {
 	}
 
 	const initialPrice = 0
+	// callGraph := sync.Map{}
+	// callGraph.Store("echo", "frontend")
+	callGraph := make(map[string]interface{})
+	callGraph["echo"] = "frontend"
 	priceTable := charon.NewPriceTable(
 		initialPrice,
-		sync.Map{},
+		"client",
+		callGraph,
 	)
+	// priceTable.callMap.Store("echo", "frontend")
 
 	// Set up a connection to the server.
 	conn, err := grpc.Dial(*addr, grpc.WithTransportCredentials(creds),
@@ -134,6 +160,16 @@ func main() {
 
 	// Make a echo client and send RPCs.
 	rgc := ecpb.NewEchoClient(conn)
-	callUnaryEcho(rgc, "hello world")
+
+	for {
+		err := callUnaryEcho(rgc, "message")
+		if err != nil {
+			// Handle the error here
+			fmt.Println("Error:", err)
+			// You can choose to continue the loop or break out of it
+			// continue
+			// break
+		}
+	}
 	//callBidiStreamingEcho(rgc)
 }

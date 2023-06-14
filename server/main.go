@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"sync"
 	"time"
 
 	"github.com/tgiannoukos/charon"
@@ -57,6 +56,7 @@ type server struct {
 
 func (s *server) UnaryEcho(ctx context.Context, in *pb.EchoRequest) (*pb.EchoResponse, error) {
 	fmt.Printf("unary echoing message %q\n", in.Message)
+	time.Sleep(time.Millisecond * 500) // example code to sleep for 500 milliseconds
 	return &pb.EchoResponse{Message: "Response from backend."}, nil
 }
 
@@ -123,10 +123,12 @@ func main() {
 		fmt.Printf("failed to create credentials: %v", err)
 	}
 
-	const initialPrice = 2
+	const initialPrice = 0
+	callGraph := make(map[string]interface{})
 	priceTable := charon.NewPriceTable(
 		initialPrice,
-		sync.Map{},
+		"backend",
+		callGraph,
 	)
 
 	s := grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(priceTable.UnaryInterceptor), grpc.StreamInterceptor(streamInterceptor))

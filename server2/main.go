@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"sync"
 	"time"
 
 	"github.com/tgiannoukos/charon"
@@ -107,6 +106,7 @@ func (s *server) UnaryEcho(ctx context.Context, in *pb.EchoRequest) (*pb.EchoRes
 	fmt.Printf("unary echoing message at server 2 %q\n", in.Message)
 	// [critical] to pass ctx from upstream to downstream
 	// This function is called when the middle tier service behave as a client and dials the downstream nodes.
+	time.Sleep(time.Millisecond * 400) // example code to sleep for 500 milliseconds
 	callUnaryEcho(ctx, s.rgc, in.Message)
 	return &pb.EchoResponse{Message: in.Message}, nil
 }
@@ -175,10 +175,18 @@ func main() {
 	}
 
 	const initialPrice = 2
+	// callGraph := sync.Map{}
+	downstreams := []string{"backend"}
+	callGraph := make(map[string]interface{})
+	callGraph["echo"] = downstreams
+	// callGraph.Store("echo", downstreams)
 	priceTable := charon.NewPriceTable(
 		initialPrice,
-		sync.Map{},
+		"frontend",
+		callGraph,
 	)
+	// priceTable.callMap.Store("echo", downstreams)
+
 	s := grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(priceTable.UnaryInterceptor), grpc.StreamInterceptor(streamInterceptor))
 
 	creds_client, err_client := credentials.NewClientTLSFromFile(data.Path("x509/ca_cert.pem"), "x.test.example.com")
