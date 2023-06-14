@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"runtime/metrics"
 	"sync/atomic"
 	"time"
 
@@ -117,15 +118,15 @@ func NewCharon(nodeName string, callmap map[string]interface{}, options map[stri
 		debugFreq:           4000,
 	}
 
+	ctx := context.WithValue(context.Background(), "request-id", 0)
+
 	if initprice, ok := options["initprice"].(int64); ok {
 		priceTable.initprice = initprice
 		// print the initprice of the node if the name is not client
 		if nodeName != "client" {
-			fmt.Printf("initprice of %s set to %d\n", nodeName, priceTable.initprice)
+			priceTable.logger(ctx, "initprice of %s set to %d\n", nodeName, priceTable.initprice)
 		}
 	}
-
-	ctx := context.Background()
 
 	if rateLimiting, ok := options["rateLimiting"].(bool); ok {
 		priceTable.rateLimiting = rateLimiting
@@ -200,7 +201,7 @@ func NewCharon(nodeName string, callmap map[string]interface{}, options map[stri
 	} else if priceTable.pinpointLatency {
 		go priceTable.latencyCheck()
 	} else if priceTable.pinpointQueuing {
-		go priceTable.latencyCheck()
+		go priceTable.queuingCheck()
 	}
 
 	return priceTable
@@ -226,6 +227,40 @@ func (pt *PriceTable) latencyCheck() {
 		// change to using the average latency
 		pt.UpdateOwnPrice(ctx, pt.observedDelay.Milliseconds() > pt.latencyThreshold.Milliseconds()*pt.GetCount())
 		pt.observedDelay = time.Duration(0)
+	}
+}
+
+// queuingCheck checks if the queuing delay of go routine is greater than the latency SLO.
+func (pt *PriceTable) queuingCheck() {
+	for range time.Tick(pt.priceUpdateRate) {
+		// Create a new context with a key-value pair of `request-id` and `0`
+		ctx := context.WithValue(context.Background(), "request-id", 0)
+		const queueingDelay = "/sched/latencies:seconds"
+
+		// Create a sample for the metric.
+		sample := make([]metrics.Sample, 1)
+		sample[0].Name = queueingDelay
+
+		// Sample the metric.
+		metrics.Read(sample)
+
+		// Check if the metric is actually supported.
+		// If it's not, the resulting value will always have
+		// kind KindBad.
+		if sample[0].Value.Kind() == metrics.KindBad {
+			panic(fmt.Sprintf("metric %q no longer supported", queueingDelay))
+		}
+
+		// Handle the result.
+		//
+		// It's OK to assume a particular Kind for a metric;
+		// they're guaranteed not to change.
+		waitingTime := sample[0].Value.Uint64()
+
+		pt.logger(ctx, "[Sampled Waiting Time]:	%d\n", waitingTime)
+
+		// pt.UpdateOwnPrice(ctx, pt.observedDelay.Milliseconds() > pt.latencySLO.Milliseconds()*pt.GetCount())
+		// pt.observedDelay = time.Duration(0)
 	}
 }
 
