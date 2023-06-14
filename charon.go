@@ -261,6 +261,12 @@ func GetHistogramDifference(earlier, later *metrics.Float64Histogram) *metrics.F
 		panic("histograms have different number of buckets")
 	}
 
+	// if either the earlier or later histogram is empty, panic
+	if len(earlier.Counts) == 0 || len(later.Counts) == 0 {
+		panic("histogram has no buckets")
+		// return &metrics.Float64Histogram{}
+	}
+
 	// Calculate the difference between the bucket counts and return the gap histogram
 	diff := metrics.Float64Histogram{}
 	for i := range earlier.Counts {
