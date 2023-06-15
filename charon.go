@@ -601,14 +601,14 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 
 	ctx = metadata.AppendToOutgoingContext(ctx, downstreamTokens...)
 
-	queuingDelay := time.Since(startTime)
-	pt.logger(ctx, "[Server-side Timer] Queuing delay is: %.2d milliseconds\n", queuingDelay.Milliseconds())
+	// queuingDelay := time.Since(startTime)
+	// pt.logger(ctx, "[Server-side Timer] Queuing delay is: %.2d milliseconds\n", queuingDelay.Milliseconds())
 
-	if pt.pinpointQueuing {
-		// increment the counter and add the queuing delay to the observed delay
-		pt.Increment()
-		pt.observedDelay += queuingDelay
-	}
+	// if pt.pinpointQueuing {
+	// 	// increment the counter and add the queuing delay to the observed delay
+	// 	pt.Increment()
+	// 	pt.observedDelay += queuingDelay
+	// }
 
 	m, err := handler(ctx, req)
 
