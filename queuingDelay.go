@@ -55,7 +55,7 @@ func maximumBucket(h *metrics.Float64Histogram) float64 {
 			return h.Buckets[i] * 1000
 		}
 	}
-	panic("should not happen")
+	return 0
 }
 
 // To extract the difference between two Float64Histogram distributions, and return a new Float64Histogram

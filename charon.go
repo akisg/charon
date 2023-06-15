@@ -254,9 +254,9 @@ func (pt *PriceTable) queuingCheck() {
 		cumulativeLat := medianBucket(currHist)
 
 		ctx := context.Background()
-		printHistogram(currHist)
+		// printHistogram(currHist)
 		pt.logger(ctx, "[Cumulative Waiting Time]:	%f ms.\n", cumulativeLat)
-		printHistogram(&diff)
+		// printHistogram(&diff)
 		pt.logger(ctx, "[Incremental Waiting Time]:	%f ms.\n", maxLatency)
 
 		pt.UpdateOwnPrice(ctx, int64(maxLatency) > pt.latencyThreshold.Milliseconds())
