@@ -265,17 +265,17 @@ func (pt *PriceTable) queuingCheck() {
 		}
 		// maxLatency is the max of the histogram in milliseconds.
 		// maxLatency := maximumBucket(&diff)
-		medianLatency := medianBucket(&diff)
-		// gapLatency := percentileBucket(&diff, 90)
+		// medianLatency := medianBucket(&diff)
+		gapLatency := percentileBucket(&diff, 90)
 		cumulativeLat := medianBucket(currHist)
 
 		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
 		// printHistogram(currHist)
 		pt.logger(ctx, "[Cumulative Waiting Time]:	%f ms.\n", cumulativeLat)
 		// printHistogram(&diff)
-		pt.logger(ctx, "[Incremental Waiting Time]:	%f ms.\n", medianLatency)
+		pt.logger(ctx, "[Incremental Waiting Time]:	%f ms.\n", gapLatency)
 
-		pt.UpdateOwnPrice(ctx, int64(medianLatency*1000) > pt.latencyThreshold.Microseconds())
+		pt.UpdateOwnPrice(ctx, int64(gapLatency*1000) > pt.latencyThreshold.Microseconds())
 		// copy the content of current histogram to the previous histogram
 		prevHist = currHist
 	}

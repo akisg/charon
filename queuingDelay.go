@@ -3,6 +3,7 @@ package charon
 import (
 	"fmt"
 	"log"
+	"math"
 	"runtime/metrics"
 	"time"
 )
@@ -33,7 +34,7 @@ func percentileBucket(h *metrics.Float64Histogram, percentile float64) float64 {
 		total += count
 	}
 
-	thresh := uint64(float64(total) * (percentile / 100.0))
+	thresh := uint64(math.Ceil(float64(total) * (percentile / 100.0)))
 	total = 0
 
 	// Iterate through the histogram counts, starting from the second bucket
