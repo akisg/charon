@@ -158,34 +158,42 @@ func NewCharon(nodeName string, callmap map[string]interface{}, options map[stri
 
 	if tokensLeft, ok := options["tokensLeft"].(int64); ok {
 		priceTable.tokensLeft = tokensLeft
+		priceTable.logger(ctx, "tokensLeft		of %s set to %v\n", nodeName, tokensLeft)
 	}
 
 	if tokenUpdateRate, ok := options["tokenUpdateRate"].(time.Duration); ok {
 		priceTable.tokenUpdateRate = tokenUpdateRate
+		priceTable.logger(ctx, "tokenUpdateRate		of %s set to %v\n", nodeName, tokenUpdateRate)
 	}
 
 	if tokenUpdateStep, ok := options["tokenUpdateStep"].(int64); ok {
 		priceTable.tokenUpdateStep = tokenUpdateStep
+		priceTable.logger(ctx, "tokenUpdateStep		of %s set to %v\n", nodeName, tokenUpdateStep)
 	}
 
 	if priceUpdateRate, ok := options["priceUpdateRate"].(time.Duration); ok {
 		priceTable.priceUpdateRate = priceUpdateRate
+		priceTable.logger(ctx, "priceUpdateRate		of %s set to %v\n", nodeName, priceUpdateRate)
 	}
 
 	if latencySLO, ok := options["latencySLO"].(time.Duration); ok {
 		priceTable.latencySLO = latencySLO
+		priceTable.logger(ctx, "latencySLO		of %s set to %v\n", nodeName, latencySLO)
 	}
 
 	if throughputThreshold, ok := options["throughputThreshold"].(int64); ok {
 		priceTable.throughputThreshold = throughputThreshold
+		priceTable.logger(ctx, "throughputThreshold	of %s set to %v\n", nodeName, throughputThreshold)
 	}
 
 	if latencyThreshold, ok := options["latencyThreshold"].(time.Duration); ok {
 		priceTable.latencyThreshold = latencyThreshold
+		priceTable.logger(ctx, "latencyThreshold	of %s set to %v\n", nodeName, latencyThreshold)
 	}
 
 	if priceStep, ok := options["priceStep"].(int64); ok {
 		priceTable.priceStep = priceStep
+		priceTable.logger(ctx, "priceStep		of %s set to %v\n", nodeName, priceStep)
 	}
 
 	if debug, ok := options["debug"].(bool); ok {
