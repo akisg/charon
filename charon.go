@@ -282,11 +282,13 @@ func (pt *PriceTable) queuingCheck() {
 // throughputCheck decrements the counter by 2x every x milliseconds.
 func (pt *PriceTable) throughputCheck() {
 	for range time.Tick(pt.priceUpdateRate) {
-		pt.Decrement(pt.throughputThreshold)
+		// pt.Decrement(pt.throughputThreshold)
 		// Create an empty context
 		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
 		pt.logger(ctx, "[Throughput Counter]:	The throughtput counter is %d\n", pt.throughputCounter)
-		pt.UpdateOwnPrice(ctx, pt.GetCount() > 0)
+		// pt.UpdateOwnPrice(ctx, pt.GetCount() > 0)
+		// update own price if getCounter is greater than the threshold
+		pt.UpdateOwnPrice(ctx, pt.GetCount() > pt.throughputThreshold)
 	}
 }
 
@@ -363,6 +365,7 @@ func (pt *PriceTable) UpdateOwnPrice(ctx context.Context, congestion bool) error
 	ownPrice_string, _ := pt.priceTableMap.LoadOrStore("ownprice", pt.initprice)
 	ownPrice := ownPrice_string.(int64)
 	// The following code has been moved to decrementCounter() for pinpointThroughput.
+	pt.logger(ctx, "[Update OwnPrice]:	congestion is %t\n", congestion)
 	if congestion {
 		ownPrice += pt.priceStep
 	} else if ownPrice > 0 {
