@@ -48,6 +48,16 @@ func percentileBucket(h *metrics.Float64Histogram, percentile float64) float64 {
 	panic("should not happen")
 }
 
+// similarly, maximumBucket returns the maximum bucket
+func maximumBucket(h *metrics.Float64Histogram) float64 {
+	for i := len(h.Counts) - 1; i >= 0; i-- {
+		if h.Counts[i] != 0 {
+			return h.Buckets[i] * 1000
+		}
+	}
+	panic("should not happen")
+}
+
 // To extract the difference between two Float64Histogram distributions, and return a new Float64Histogram
 // you can subtract the corresponding bucket counts of the two histograms.
 // If the earlier histogram is from an empty pointer, return the later histogram

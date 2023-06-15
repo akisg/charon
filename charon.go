@@ -248,14 +248,15 @@ func (pt *PriceTable) queuingCheck() {
 		} else {
 			diff = GetHistogramDifference(*prevHist, *currHist)
 		}
-		// gapLatency is the median of the histogram in milliseconds.
-		gapLatency := percentileBucket(&diff, 90)
+		// maxLatency is the max of the histogram in milliseconds.
+		maxLatency := maximumBucket(&diff)
+		// gapLatency := percentileBucket(&diff, 90)
 		cumulativeLat := medianBucket(currHist)
 
 		printHistogram(currHist)
-		fmt.Printf("[Sampled Cumulative Waiting Time]:	%f ms.\n", cumulativeLat)
+		fmt.Printf("[Cumulative Waiting Time]:	%f ms.\n", cumulativeLat)
 		printHistogram(&diff)
-		fmt.Printf("[Sampled Difference Waiting Time]:	%f ms.\n", gapLatency)
+		fmt.Printf("[Incremental Waiting Time]:	%f ms.\n", maxLatency)
 
 		// copy the content of current histogram to the previous histogram
 		prevHist = currHist
