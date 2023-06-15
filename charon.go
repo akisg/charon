@@ -116,6 +116,7 @@ func NewCharon(nodeName string, callmap map[string]interface{}, options map[stri
 		latencySLO:          time.Millisecond * 20,
 		throughputThreshold: 20,
 		latencyThreshold:    time.Millisecond * 16,
+		priceStep:           1,
 		debug:               false,
 		debugFreq:           4000,
 	}
