@@ -267,7 +267,7 @@ func (pt *PriceTable) queuingCheck() {
 		// gapLatency := percentileBucket(&diff, 90)
 		cumulativeLat := medianBucket(currHist)
 
-		ctx := context.Background()
+		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
 		// printHistogram(currHist)
 		pt.logger(ctx, "[Cumulative Waiting Time]:	%f ms.\n", cumulativeLat)
 		// printHistogram(&diff)
@@ -283,9 +283,9 @@ func (pt *PriceTable) queuingCheck() {
 func (pt *PriceTable) throughputCheck() {
 	for range time.Tick(pt.priceUpdateRate) {
 		pt.Decrement(pt.throughputThreshold)
-
 		// Create an empty context
-		ctx := context.Background()
+		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
+		pt.logger(ctx, "[Throughput Counter]:	The throughtput counter is %d\n", pt.throughputCounter)
 		pt.UpdateOwnPrice(ctx, pt.GetCount() > 0)
 	}
 }
@@ -369,6 +369,7 @@ func (pt *PriceTable) UpdateOwnPrice(ctx context.Context, congestion bool) error
 		ownPrice -= pt.priceStep
 	}
 	pt.priceTableMap.Store("ownprice", ownPrice)
+	pt.logger(ctx, "[Update OwnPrice]:	Own price updated to %d\n", ownPrice)
 	return nil
 }
 
