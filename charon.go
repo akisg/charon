@@ -123,6 +123,18 @@ func NewCharon(nodeName string, callmap map[string]interface{}, options map[stri
 	// create a new incoming context with the "request-id" as "0"
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
 
+	if debug, ok := options["debug"].(bool); ok {
+		priceTable.debug = debug
+	}
+
+	if debugFreq, ok := options["debugFreq"].(int64); ok {
+		priceTable.debugFreq = debugFreq
+		// print the debug and debugFreq of the node if the name is not client
+		if nodeName != "client" {
+			priceTable.logger(ctx, "debug and debugFreq of %s set to %v and %v\n", nodeName, priceTable.debug, debugFreq)
+		}
+	}
+
 	if initprice, ok := options["initprice"].(int64); ok {
 		priceTable.initprice = initprice
 		// print the initprice of the node if the name is not client
@@ -194,18 +206,6 @@ func NewCharon(nodeName string, callmap map[string]interface{}, options map[stri
 	if priceStep, ok := options["priceStep"].(int64); ok {
 		priceTable.priceStep = priceStep
 		priceTable.logger(ctx, "priceStep		of %s set to %v\n", nodeName, priceStep)
-	}
-
-	if debug, ok := options["debug"].(bool); ok {
-		priceTable.debug = debug
-	}
-
-	if debugFreq, ok := options["debugFreq"].(int64); ok {
-		priceTable.debugFreq = debugFreq
-		// print the debug and debugFreq of the node if the name is not client
-		if nodeName != "client" {
-			priceTable.logger(ctx, "debug and debugFreq of %s set to %v and %v\n", nodeName, priceTable.debug, debugFreq)
-		}
 	}
 
 	// Rest of the code remains the same
