@@ -265,7 +265,7 @@ func (pt *PriceTable) queuingCheck() {
 		// printHistogram(&diff)
 		pt.logger(ctx, "[Incremental Waiting Time]:	%f ms.\n", maxLatency)
 
-		pt.UpdateOwnPrice(ctx, int64(maxLatency) > pt.latencyThreshold.Milliseconds())
+		pt.UpdateOwnPrice(ctx, int64(maxLatency*1000) > pt.latencyThreshold.Microseconds())
 		// copy the content of current histogram to the previous histogram
 		prevHist = currHist
 	}
