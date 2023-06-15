@@ -50,6 +50,7 @@ type PriceTable struct {
 	latencySLO          time.Duration
 	throughputThreshold int64
 	latencyThreshold    time.Duration
+	priceStep           int64
 	debug               bool
 	debugFreq           int64
 }
@@ -76,6 +77,7 @@ func NewPriceTable(initprice int64, nodeName string, callmap map[string]interfac
 		priceUpdateRate:    time.Millisecond * 10,
 		observedDelay:      time.Duration(0),
 		latencySLO:         time.Millisecond * 20,
+		priceStep:          1,
 		debug:              false,
 		debugFreq:          4000,
 	}
@@ -180,6 +182,10 @@ func NewCharon(nodeName string, callmap map[string]interface{}, options map[stri
 
 	if latencyThreshold, ok := options["latencyThreshold"].(time.Duration); ok {
 		priceTable.latencyThreshold = latencyThreshold
+	}
+
+	if priceStep, ok := options["priceStep"].(int64); ok {
+		priceTable.priceStep = priceStep
 	}
 
 	if debug, ok := options["debug"].(bool); ok {
@@ -350,9 +356,9 @@ func (pt *PriceTable) UpdateOwnPrice(ctx context.Context, congestion bool) error
 	ownPrice := ownPrice_string.(int64)
 	// The following code has been moved to decrementCounter() for pinpointThroughput.
 	if congestion {
-		ownPrice += 1
+		ownPrice += pt.priceStep
 	} else if ownPrice > 0 {
-		ownPrice -= 1
+		ownPrice -= pt.priceStep
 	}
 	pt.priceTableMap.Store("ownprice", ownPrice)
 	return nil
