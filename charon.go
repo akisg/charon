@@ -253,12 +253,12 @@ func (pt *PriceTable) queuingCheck() {
 		// gapLatency := percentileBucket(&diff, 90)
 		cumulativeLat := medianBucket(currHist)
 
-		printHistogram(currHist)
-		fmt.Printf("[Cumulative Waiting Time]:	%f ms.\n", cumulativeLat)
-		printHistogram(&diff)
-		fmt.Printf("[Incremental Waiting Time]:	%f ms.\n", maxLatency)
-
 		ctx := context.Background()
+		printHistogram(currHist)
+		pt.logger(ctx, "[Cumulative Waiting Time]:	%f ms.\n", cumulativeLat)
+		printHistogram(&diff)
+		pt.logger(ctx, "[Incremental Waiting Time]:	%f ms.\n", maxLatency)
+
 		pt.UpdateOwnPrice(ctx, int64(maxLatency) > pt.latencyThreshold.Milliseconds())
 		// copy the content of current histogram to the previous histogram
 		prevHist = currHist
