@@ -31,7 +31,7 @@ type PriceTable struct {
 	// initprice is the price table's initprice.
 	initprice          int64
 	nodeName           string
-	callMap            map[string]interface{}
+	callMap            map[string][]string
 	priceTableMap      sync.Map
 	rateLimiting       bool
 	loadShedding       bool
@@ -56,8 +56,7 @@ type PriceTable struct {
 }
 
 // NewPriceTable creates a new instance of PriceTable.
-// func NewPriceTable(initprice int64, callmap sync.Map, pricetable sync.Map) *PriceTable {
-func NewPriceTable(initprice int64, nodeName string, callmap map[string]interface{}) (priceTable *PriceTable) {
+func NewPriceTable(initprice int64, nodeName string, callmap map[string][]string) (priceTable *PriceTable) {
 	priceTable = &PriceTable{
 		initprice:          initprice,
 		nodeName:           nodeName,
@@ -94,7 +93,7 @@ func NewPriceTable(initprice int64, nodeName string, callmap map[string]interfac
 	return priceTable
 }
 
-func NewCharon(nodeName string, callmap map[string]interface{}, options map[string]interface{}) *PriceTable {
+func NewCharon(nodeName string, callmap map[string][]string, options map[string]interface{}) *PriceTable {
 	priceTable := &PriceTable{
 		initprice:           0,
 		nodeName:            nodeName,
@@ -319,7 +318,6 @@ func (pt *PriceTable) unblockRateLimiter() {
 
 // RateLimiting is for the end user (human client) to check the price and ratelimit their calls when tokens < prices.
 func (pt *PriceTable) RateLimiting(ctx context.Context, tokens int64, methodName string) error {
-	// downstreamName, _ := t.callMap.Load(methodName)
 	downstreamName, _ := pt.callMap[methodName]
 	servicePrice_string, _ := pt.priceTableMap.LoadOrStore(downstreamName, pt.initprice)
 	servicePrice := servicePrice_string.(int64)
@@ -336,16 +334,12 @@ func (pt *PriceTable) RateLimiting(ctx context.Context, tokens int64, methodName
 
 func (pt *PriceTable) RetrieveDSPrice(ctx context.Context, methodName string) (int64, error) {
 	// retrive downstream node name involved in the request from callmap.
-	// downstreamNames, _ := t.callMap.Load(methodName)
 	downstreamNames, _ := pt.callMap[methodName]
 	var downstreamPriceSum int64
-	// var downstreamPrice int64
-	if downstreamNamesSlice, ok := downstreamNames.([]string); ok {
-		for _, downstreamName := range downstreamNamesSlice {
-			downstreamPriceString, _ := pt.priceTableMap.LoadOrStore(downstreamName, pt.initprice)
-			downstreamPrice := downstreamPriceString.(int64)
-			downstreamPriceSum += downstreamPrice
-		}
+	for _, downstreamName := range downstreamNames {
+		downstreamPriceString, _ := pt.priceTableMap.LoadOrStore(downstreamName, pt.initprice)
+		downstreamPrice := downstreamPriceString.(int64)
+		downstreamPriceSum += downstreamPrice
 	}
 	// fmt.Println("Total Price:", downstreamPriceSum)
 	return downstreamPriceSum, nil
@@ -423,22 +417,19 @@ func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName
 // It returns a map, with the downstream service names as keys, and tokens left for them as values.
 func (pt *PriceTable) SplitTokens(ctx context.Context, tokenleft int64, methodName string) ([]string, error) {
 	downstreamNames, _ := pt.callMap[methodName]
-	// downstreamNames, _ := t.callMap.Load(methodName)
 	downstreamTokens := []string{}
 	downstreamPriceSum, _ := pt.RetrieveDSPrice(ctx, methodName)
 	pt.logger(ctx, "[Split tokens]:	downstream total price is %d\n", downstreamPriceSum)
 
-	if downstreamNamesSlice, ok := downstreamNames.([]string); ok {
-		size := len(downstreamNamesSlice)
-		tokenleftPerDownstream := (tokenleft - downstreamPriceSum) / int64(size)
-		pt.logger(ctx, "[Split tokens]:	extra token left for each ds is %d\n", tokenleftPerDownstream)
-		for _, downstreamName := range downstreamNamesSlice {
-			downstreamPriceString, _ := pt.priceTableMap.LoadOrStore(downstreamName, int64(0))
-			downstreamPrice := downstreamPriceString.(int64)
-			downstreamToken := tokenleftPerDownstream + downstreamPrice
-			downstreamTokens = append(downstreamTokens, "tokens-"+downstreamName, strconv.FormatInt(downstreamToken, 10))
-			pt.logger(ctx, "[Split tokens]:	token for %s is %d + %d\n", downstreamName, tokenleftPerDownstream, downstreamPrice)
-		}
+	size := len(downstreamNames)
+	tokenleftPerDownstream := (tokenleft - downstreamPriceSum) / int64(size)
+	pt.logger(ctx, "[Split tokens]:	extra token left for each ds is %d\n", tokenleftPerDownstream)
+	for _, downstreamName := range downstreamNames {
+		downstreamPriceString, _ := pt.priceTableMap.LoadOrStore(downstreamName, int64(0))
+		downstreamPrice := downstreamPriceString.(int64)
+		downstreamToken := tokenleftPerDownstream + downstreamPrice
+		downstreamTokens = append(downstreamTokens, "tokens-"+downstreamName, strconv.FormatInt(downstreamToken, 10))
+		pt.logger(ctx, "[Split tokens]:	token for %s is %d + %d\n", downstreamName, tokenleftPerDownstream, downstreamPrice)
 	}
 	return downstreamTokens, nil
 }
