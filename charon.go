@@ -534,7 +534,8 @@ func (pt *PriceTable) logger(ctx context.Context, format string, a ...interface{
 		if ok {
 			reqid, _ := strconv.ParseInt(md["request-id"][0], 10, 64)
 			if reqid%pt.debugFreq == 0 {
-				fmt.Printf("LOG:\t"+format+"\n", a...)
+				timestamp := time.Now().Format("2006-01-02T15:04:05.999999999-07:00")
+				fmt.Printf("LOG: "+timestamp+"|\t"+format+"\n", a...)
 			}
 		}
 	}
