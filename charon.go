@@ -266,13 +266,16 @@ func (pt *PriceTable) queuingCheck() {
 		// maxLatency := maximumBucket(&diff)
 		// medianLatency := medianBucket(&diff)
 		gapLatency := percentileBucket(&diff, 90)
-		cumulativeLat := medianBucket(currHist)
 
 		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
+
+		// ToDo: move the print of the histogram to a file
+
+		// cumulativeLat := medianBucket(currHist)
 		// printHistogram(currHist)
-		pt.logger(ctx, "[Cumulative Waiting Time]:	%f ms.\n", cumulativeLat)
+		// pt.logger(ctx, "[Cumulative Waiting Time]:	%f ms.\n", cumulativeLat)
 		// printHistogram(&diff)
-		pt.logger(ctx, "[Incremental Waiting Time]:	%f ms.\n", gapLatency)
+		// pt.logger(ctx, "[Incremental Waiting Time]:	%f ms.\n", gapLatency)
 
 		pt.UpdateOwnPrice(ctx, int64(gapLatency*1000) > pt.latencyThreshold.Microseconds())
 		// copy the content of current histogram to the previous histogram
@@ -422,6 +425,7 @@ func (pt *PriceTable) SplitTokens(ctx context.Context, tokenleft int64, methodNa
 	pt.logger(ctx, "[Split tokens]:	downstream total price is %d\n", downstreamPriceSum)
 
 	size := len(downstreamNames)
+	pt.logger(ctx, "[Split tokens]:	%d downstream services for %s \n", size, pt.nodeName)
 	tokenleftPerDownstream := (tokenleft - downstreamPriceSum) / int64(size)
 	pt.logger(ctx, "[Split tokens]:	extra token left for each ds is %d\n", tokenleftPerDownstream)
 	for _, downstreamName := range downstreamNames {
