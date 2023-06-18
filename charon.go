@@ -420,11 +420,15 @@ func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName
 // It returns a map, with the downstream service names as keys, and tokens left for them as values.
 func (pt *PriceTable) SplitTokens(ctx context.Context, tokenleft int64, methodName string) ([]string, error) {
 	downstreamNames, _ := pt.callMap[methodName]
+	size := len(downstreamNames)
+	if size == 0 {
+		return nil, nil
+	}
+
 	downstreamTokens := []string{}
 	downstreamPriceSum, _ := pt.RetrieveDSPrice(ctx, methodName)
 	pt.logger(ctx, "[Split tokens]:	downstream total price is %d\n", downstreamPriceSum)
 
-	size := len(downstreamNames)
 	pt.logger(ctx, "[Split tokens]:	%d downstream services for %s \n", size, pt.nodeName)
 	tokenleftPerDownstream := (tokenleft - downstreamPriceSum) / int64(size)
 	pt.logger(ctx, "[Split tokens]:	extra token left for each ds is %d\n", tokenleftPerDownstream)
