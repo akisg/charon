@@ -275,7 +275,7 @@ func (pt *PriceTable) queuingCheck() {
 		// printHistogram(currHist)
 		pt.logger(ctx, "[Cumulative Waiting Time Median]:	%f ms.\n", cumulativeLat)
 		// printHistogram(&diff)
-		pt.logger(ctx, "[Incremental Waiting Time 90-tile]:	%f ms.\n", gapLatency)
+		pt.logger(ctx, "[Incremental Waiting Time 90-tile]:	%f ms.\n", percentileBucket(&diff, 90))
 		pt.logger(ctx, "[Incremental Waiting Time Median]:	%f ms.\n", medianBucket(&diff))
 		pt.logger(ctx, "[Incremental Waiting Time Maximum]:	%f ms.\n", maximumBucket(&diff))
 
