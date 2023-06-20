@@ -263,9 +263,9 @@ func (pt *PriceTable) queuingCheck() {
 			diff = GetHistogramDifference(*prevHist, *currHist)
 		}
 		// maxLatency is the max of the histogram in milliseconds.
-		// maxLatency := maximumBucket(&diff)
+		gapLatency := maximumBucket(&diff)
 		// medianLatency := medianBucket(&diff)
-		gapLatency := percentileBucket(&diff, 90)
+		// gapLatency := percentileBucket(&diff, 90)
 
 		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
 
