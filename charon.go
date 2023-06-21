@@ -486,9 +486,14 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 	// tok_string := strconv.Itoa(tok)
 
 	var tok int64
-
+	// Set a timer for the client to timeout if it has been waiting for too long.
+	startTime := time.Now()
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
 	for {
+		// if waiting for longer than ClientTimeout, return error RateLimited
+		if time.Since(startTime) > pt.clientTimeOut {
+			return RateLimited
+		}
 		// right now let's assume that client uses all the tokens on her next request.
 		tok = pt.tokensLeft
 		if !pt.rateLimiting {
@@ -497,12 +502,7 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 		ratelimit := pt.RateLimiting(ctx, tok, "echo")
 		if ratelimit == RateLimited {
 			// if it has been waiting for clientTimeOut time, then return error RateLimited, otherwise wait for channel ratelimit
-			select {
-			case <-pt.rateLimiter:
-				continue
-			case <-time.After(pt.clientTimeOut):
-				return ratelimit
-			}
+			<-pt.rateLimiter
 		} else {
 			break
 		}
