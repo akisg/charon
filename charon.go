@@ -323,12 +323,9 @@ func (pt *PriceTable) unblockRateLimiter() {
 
 // RateLimiting is for the end user (human client) to check the price and ratelimit their calls when tokens < prices.
 func (pt *PriceTable) RateLimiting(ctx context.Context, tokens int64, methodName string) error {
-	downstreamName, _ := pt.callMap[methodName]
-	servicePrice_string, _ := pt.priceTableMap.LoadOrStore(downstreamName, pt.initprice)
-	servicePrice := servicePrice_string.(int64)
-
+	servicePrice, _ := pt.RetrieveDSPrice(ctx, methodName)
 	extratoken := tokens - servicePrice
-	pt.logger(ctx, "[Ratelimiting]: Checking Request. Token is %d, %s price is %d\n", tokens, downstreamName, servicePrice)
+	pt.logger(ctx, "[Ratelimiting]: Checking Request. Token is %d, %s price is %d\n", tokens, methodName, servicePrice)
 
 	if extratoken < 0 {
 		pt.logger(ctx, "[Prepare Req]: Request blocked for lack of tokens.")
@@ -391,8 +388,7 @@ func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName
 	// downstreamPrice := downstreamPrice_string.(int64)
 	// totalPrice_string, _ := t.ptmap.LoadOrStore("totalprice", t.initprice)
 	// totalPrice := totalPrice_string.(int64)
-	var extratoken int64
-	extratoken = tokens - totalPrice
+	extratoken := tokens - totalPrice
 
 	pt.logger(ctx, "[Received Req]:	Total price is %d, ownPrice is %d downstream price is %d\n", totalPrice, ownPrice, downstreamPrice)
 
