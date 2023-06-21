@@ -47,7 +47,7 @@ type PriceTable struct {
 	throughputCounter   int64
 	priceUpdateRate     time.Duration
 	observedDelay       time.Duration
-	latencySLO          time.Duration
+	clientTimeOut       time.Duration
 	throughputThreshold int64
 	latencyThreshold    time.Duration
 	priceStep           int64
@@ -75,7 +75,7 @@ func NewPriceTable(initprice int64, nodeName string, callmap map[string][]string
 		throughputCounter:  0,
 		priceUpdateRate:    time.Millisecond * 10,
 		observedDelay:      time.Duration(0),
-		latencySLO:         time.Millisecond * 20,
+		clientTimeOut:      time.Millisecond * 5,
 		priceStep:          1,
 		debug:              false,
 		debugFreq:          4000,
@@ -112,7 +112,7 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 		throughputCounter:   0,
 		priceUpdateRate:     time.Millisecond * 10,
 		observedDelay:       time.Duration(0),
-		latencySLO:          time.Millisecond * 20,
+		clientTimeOut:       time.Millisecond * 5,
 		throughputThreshold: 20,
 		latencyThreshold:    time.Millisecond * 16,
 		priceStep:           1,
@@ -188,9 +188,9 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 		priceTable.logger(ctx, "priceUpdateRate		of %s set to %v\n", nodeName, priceUpdateRate)
 	}
 
-	if latencySLO, ok := options["latencySLO"].(time.Duration); ok {
-		priceTable.latencySLO = latencySLO
-		priceTable.logger(ctx, "latencySLO		of %s set to %v\n", nodeName, latencySLO)
+	if clientTimeOut, ok := options["clientTimeOut"].(time.Duration); ok {
+		priceTable.clientTimeOut = clientTimeOut
+		priceTable.logger(ctx, "clientTimeout		of %s set to %v\n", nodeName, clientTimeOut)
 	}
 
 	if throughputThreshold, ok := options["throughputThreshold"].(int64); ok {
@@ -496,8 +496,13 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 		}
 		ratelimit := pt.RateLimiting(ctx, tok, "echo")
 		if ratelimit == RateLimited {
-			// return ratelimit
-			<-pt.rateLimiter
+			// if it has been waiting for clientTimeOut time, then return error RateLimited, otherwise wait for channel ratelimit
+			select {
+			case <-pt.rateLimiter:
+				continue
+			case <-time.After(pt.clientTimeOut):
+				return ratelimit
+			}
 		} else {
 			break
 		}
