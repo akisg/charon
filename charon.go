@@ -333,7 +333,7 @@ func (pt *PriceTable) checkBoth() {
 		pt.logger(ctx, "[Incremental Waiting Time Median]:	%f ms.\n", medianBucket(&diff))
 		pt.logger(ctx, "[Incremental Waiting Time Maximum]:	%f ms.\n", maximumBucket(&diff))
 
-		pt.UpdateOwnPrice(ctx, pt.GetCount() > pt.throughputThreshold || int64(gapLatency*1000) > pt.latencyThreshold.Microseconds())
+		pt.UpdateOwnPrice(ctx, pt.GetCount() > pt.throughputThreshold && int64(gapLatency*1000) > pt.latencyThreshold.Microseconds())
 		// copy the content of current histogram to the previous histogram
 		prevHist = currHist
 	}
