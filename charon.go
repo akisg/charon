@@ -212,12 +212,13 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 	if priceTable.nodeName == "client" {
 		go priceTable.tokenRefill()
 	} else {
-		if priceTable.pinpointThroughput {
+		if priceTable.pinpointQueuing && priceTable.pinpointThroughput {
+			go priceTable.checkBoth()
+		} else if priceTable.pinpointThroughput {
 			go priceTable.throughputCheck()
 		} else if priceTable.pinpointLatency {
 			go priceTable.latencyCheck()
-		}
-		if priceTable.pinpointQueuing {
+		} else if priceTable.pinpointQueuing {
 			go priceTable.queuingCheck()
 		}
 	}
@@ -300,6 +301,42 @@ func (pt *PriceTable) throughputCheck() {
 		pt.UpdateOwnPrice(ctx, pt.GetCount() > pt.throughputThreshold)
 	}
 }
+
+// checkBoth checks both throughput and latency.
+func (pt *PriceTable) checkBoth() {
+	var prevHist *metrics.Float64Histogram
+	for range time.Tick(pt.priceUpdateRate) {
+		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
+		pt.logger(ctx, "[Throughput Counter]:	The throughtput counter is %d\n", pt.throughputCounter)
+
+		// get the current histogram
+		currHist := readHistogram()
+
+		// calculate the differernce between the two histograms prevHist and currHist
+		diff := metrics.Float64Histogram{}
+		// if preHist is empty pointer, return currHist
+		if prevHist == nil {
+			diff = *currHist
+		} else {
+			diff = GetHistogramDifference(*prevHist, *currHist)
+		}
+		// maxLatency is the max of the histogram in milliseconds.
+		gapLatency := maximumBucket(&diff)
+		// medianLatency := medianBucket(&diff)
+		// gapLatency := percentileBucket(&diff, 90)
+
+		cumulativeLat := medianBucket(currHist)
+		// printHistogram(currHist)
+		pt.logger(ctx, "[Cumulative Waiting Time Median]:	%f ms.\n", cumulativeLat)
+		// printHistogram(&diff)
+		pt.logger(ctx, "[Incremental Waiting Time 90-tile]:	%f ms.\n", percentileBucket(&diff, 90))
+		pt.logger(ctx, "[Incremental Waiting Time Median]:	%f ms.\n", medianBucket(&diff))
+		pt.logger(ctx, "[Incremental Waiting Time Maximum]:	%f ms.\n", maximumBucket(&diff))
+
+		pt.UpdateOwnPrice(ctx, pt.GetCount() > pt.throughputThreshold || int64(gapLatency*1000) > pt.latencyThreshold.Microseconds())
+		// copy the content of current histogram to the previous histogram
+		prevHist = currHist
+
 
 // tokenRefill is a goroutine that refills the tokens in the price table.
 func (pt *PriceTable) tokenRefill() {
