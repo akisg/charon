@@ -345,7 +345,7 @@ func (pt *PriceTable) tokenRefill() {
 		pt.tokensLeft += pt.tokenUpdateStep
 		pt.lastUpdateTime = time.Now()
 		pt.unblockRateLimiter()
-		ctx := context.Background()
+		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
 		pt.logger(ctx, "[TokenRefill]: Tokens refilled. Tokens left: %d\n", pt.tokensLeft)
 	}
 }
