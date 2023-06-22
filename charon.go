@@ -336,7 +336,8 @@ func (pt *PriceTable) checkBoth() {
 		pt.UpdateOwnPrice(ctx, pt.GetCount() > pt.throughputThreshold || int64(gapLatency*1000) > pt.latencyThreshold.Microseconds())
 		// copy the content of current histogram to the previous histogram
 		prevHist = currHist
-
+	}
+}
 
 // tokenRefill is a goroutine that refills the tokens in the price table.
 func (pt *PriceTable) tokenRefill() {
