@@ -211,12 +211,15 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 	// Rest of the code remains the same
 	if priceTable.nodeName == "client" {
 		go priceTable.tokenRefill()
-	} else if priceTable.pinpointThroughput {
-		go priceTable.throughputCheck()
-	} else if priceTable.pinpointLatency {
-		go priceTable.latencyCheck()
-	} else if priceTable.pinpointQueuing {
-		go priceTable.queuingCheck()
+	} else {
+		if priceTable.pinpointThroughput {
+			go priceTable.throughputCheck()
+		} else if priceTable.pinpointLatency {
+			go priceTable.latencyCheck()
+		}
+		if priceTable.pinpointQueuing {
+			go priceTable.queuingCheck()
+		}
 	}
 
 	return priceTable
