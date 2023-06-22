@@ -532,7 +532,8 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
 	for {
 		// if waiting for longer than ClientTimeout, return error RateLimited
-		if time.Since(startTime) > pt.clientTimeOut {
+		if pt.rateLimiting && time.Since(startTime) > pt.clientTimeOut {
+			pt.logger(ctx, "[Client Timeout]:	Client timeout waiting for tokens.\n")
 			return status.Errorf(codes.DeadlineExceeded, "Client timeout waiting for tokens.")
 		}
 		// right now let's assume that client uses all the tokens on her next request.
@@ -573,7 +574,14 @@ func (pt *PriceTable) logger(ctx context.Context, format string, a ...interface{
 	if pt.debug {
 		md, ok := metadata.FromIncomingContext(ctx)
 		if ok {
-			reqid, _ := strconv.ParseInt(md["request-id"][0], 10, 64)
+			reqid, err := strconv.ParseInt(md["request-id"][0], 10, 64)
+			// if request-id is empty, then check the outgoing context
+			if err != nil {
+				md, ok := metadata.FromOutgoingContext(ctx)
+				if ok {
+					reqid, _ = strconv.ParseInt(md["request-id"][0], 10, 64)
+				}
+			}
 			if reqid%pt.debugFreq == 0 {
 				timestamp := time.Now().Format("2006-01-02T15:04:05.999999999-07:00")
 				fmt.Printf("LOG: "+timestamp+"|\t"+format+"\n", a...)
