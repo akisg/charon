@@ -496,7 +496,7 @@ func (pt *PriceTable) UpdatePrice(ctx context.Context, method string, downstream
 // unaryInterceptor is an example unary interceptor.
 func (pt *PriceTable) UnaryInterceptorClient(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	// Jiali: the following line print the method name of the req/response, will be used to update the
-	pt.logger(ctx, "[Before Sub Req]:	The method name is %s\n", method)
+	pt.logger(ctx, "[Before Sub Req]:	Node %s calling %s\n", pt.nodeName, method)
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
 	// overwrite rather than append to the header with the node name of this client
 	ctx = metadata.AppendToOutgoingContext(ctx, "name", pt.nodeName)
@@ -508,6 +508,8 @@ func (pt *PriceTable) UnaryInterceptorClient(ctx context.Context, method string,
 		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
 		pt.UpdatePrice(ctx, header["name"][0], priceDownstream)
 		pt.logger(ctx, "[After Resp]:	The price table is from %s\n", header["name"])
+	} else {
+		pt.logger(ctx, "[After Resp]:	No price table received\n")
 	}
 
 	return err
@@ -549,6 +551,7 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 		}
 		ratelimit := pt.RateLimiting(ctx, tok, "echo")
 		if ratelimit == RateLimited {
+			pt.logger(ctx, "[Rate Limited]:	Client is rate limited.\n")
 			<-pt.rateLimiter
 		} else {
 			break
@@ -567,6 +570,8 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
 		pt.UpdatePrice(ctx, header["name"][0], priceDownstream)
 		pt.logger(ctx, "[After Resp]:	The price table is from %s\n", header["name"])
+	} else {
+		pt.logger(ctx, "[After Resp]:	No price table received\n")
 	}
 	return err
 }
@@ -576,6 +581,7 @@ func (pt *PriceTable) logger(ctx context.Context, format string, a ...interface{
 	if pt.debug {
 		var reqid int64
 		var err error
+		var ok, found bool
 
 		// Check incoming context for "request-id" metadata
 		if md, ok := metadata.FromIncomingContext(ctx); ok {
@@ -588,13 +594,15 @@ func (pt *PriceTable) logger(ctx context.Context, format string, a ...interface{
 			}
 		}
 
-		// Check outgoing context for "request-id" metadata
-		if md, ok := metadata.FromOutgoingContext(ctx); ok {
-			if requestIDs, found := md["request-id"]; found && len(requestIDs) > 0 {
-				reqid, err = strconv.ParseInt(requestIDs[0], 10, 64)
-				if err != nil {
-					// Error parsing request ID, handle accordingly
-					panic(err)
+		// Check outgoing context for "request-id" metadata only if it wasn't found in the incoming context
+		if !ok || !found {
+			if md, ok := metadata.FromOutgoingContext(ctx); ok {
+				if requestIDs, found := md["request-id"]; found && len(requestIDs) > 0 {
+					reqid, err = strconv.ParseInt(requestIDs[0], 10, 64)
+					if err != nil {
+						// Error parsing request ID, handle accordingly
+						panic(err)
+					}
 				}
 			}
 		}
