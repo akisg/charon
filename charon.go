@@ -51,6 +51,7 @@ type PriceTable struct {
 	priceStep           int64
 	debug               bool
 	debugFreq           int64
+	guidePrice          int64
 }
 
 /*

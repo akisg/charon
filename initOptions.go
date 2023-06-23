@@ -71,6 +71,7 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 		priceStep:           1,
 		debug:               false,
 		debugFreq:           4000,
+		guidePrice:          -1,
 	}
 
 	// create a new incoming context with the "request-id" as "0"
@@ -155,6 +156,11 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 	if priceStep, ok := options["priceStep"].(int64); ok {
 		priceTable.priceStep = priceStep
 		priceTable.logger(ctx, "priceStep		of %s set to %v\n", nodeName, priceStep)
+	}
+
+	if guidePrice, ok := options["guidePrice"].(int64); ok {
+		priceTable.guidePrice = guidePrice
+		priceTable.logger(ctx, "guidePrice		of %s set to %v\n", nodeName, guidePrice)
 	}
 
 	// Rest of the code remains the same
