@@ -3,6 +3,7 @@ package charon
 import (
 	"context"
 	"runtime/metrics"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -66,7 +67,10 @@ func (pt *PriceTable) queuingCheck() {
 		pt.logger(ctx, "[Incremental Waiting Time Median]:	%f ms.\n", medianBucket(&diff))
 		pt.logger(ctx, "[Incremental Waiting Time Maximum]:	%f ms.\n", maximumBucket(&diff))
 
-		pt.UpdateOwnPrice(ctx, int64(gapLatency*1000) > pt.latencyThreshold.Microseconds())
+		// store the gapLatency in the context ctx
+		ctx = context.WithValue(ctx, "gapLatency", gapLatency)
+
+		pt.UpdateOwnPrice(ctx, pt.overloadDetection(ctx))
 		// copy the content of current histogram to the previous histogram
 		prevHist = currHist
 	}
@@ -81,7 +85,7 @@ func (pt *PriceTable) throughputCheck() {
 		pt.logger(ctx, "[Throughput Counter]:	The throughtput counter is %d\n", pt.throughputCounter)
 		// pt.UpdateOwnPrice(ctx, pt.GetCount() > 0)
 		// update own price if getCounter is greater than the threshold
-		pt.UpdateOwnPrice(ctx, pt.GetCount() > pt.throughputThreshold)
+		pt.UpdateOwnPrice(ctx, pt.overloadDetection(ctx))
 	}
 }
 
@@ -120,4 +124,27 @@ func (pt *PriceTable) checkBoth() {
 		// copy the content of current histogram to the previous histogram
 		prevHist = currHist
 	}
+}
+
+// overloadDetection takes signals as input, (either pinpointLatency or throughputCounter)
+// and compares them with the threshold. If the signal is greater than the threshold,
+// then the overload flag is set to true. If the signal is less than the threshold,
+// then the overload flag is set to false. The overload flag is then used to update
+// the price table.
+func (pt *PriceTable) overloadDetection(ctx context.Context) bool {
+	if pt.pinpointThroughput {
+		if pt.GetCount() > pt.throughputThreshold {
+			return true
+		}
+	} else if pt.pinpointQueuing {
+		// read the gapLatency from context ctx
+		gapLatency, err := strconv.ParseFloat(ctx.Value("gapLatency").(string), 64)
+		if err != nil {
+			panic(err)
+		}
+		if int64(gapLatency*1000) > pt.latencyThreshold.Microseconds() {
+			return true
+		}
+	}
+	return false
 }
