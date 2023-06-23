@@ -24,6 +24,7 @@ var (
 	// InsufficientTokens is returned by the Limiter in case the number of requests overflows the capacity of a Limiter.
 	InsufficientTokens = errors.New("Received insufficient tokens, trigger load shedding.")
 	RateLimited        = errors.New("Insufficient tokens to send, trigger rate limit.")
+	errMissingMetadata = status.Errorf(codes.InvalidArgument, "missing metadata")
 )
 
 // PriceTable implements the Charon price table
@@ -520,7 +521,7 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 	// pt.logger(ctx, method)
 	md, ok := metadata.FromOutgoingContext(ctx)
 	if !ok {
-		return nil, errMissingMetadata
+		return errMissingMetadata
 	}
 
 	// print all the k-v pairs in the metadata md
@@ -570,10 +571,6 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 	}
 	return err
 }
-
-var (
-	errMissingMetadata = status.Errorf(codes.InvalidArgument, "missing metadata")
-)
 
 // logger is to mock a sophisticated logging system. To simplify the example, we just print out the content.
 func (pt *PriceTable) logger(ctx context.Context, format string, a ...interface{}) {
