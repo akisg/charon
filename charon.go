@@ -2,10 +2,7 @@ package charon
 
 import (
 	"context"
-	"fmt"
 	"log"
-	"runtime/metrics"
-	"sync/atomic"
 	"time"
 
 	"strconv"
@@ -223,119 +220,6 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 	return priceTable
 }
 
-func (pt *PriceTable) Increment() {
-	atomic.AddInt64(&pt.throughputCounter, 1)
-}
-
-func (pt *PriceTable) Decrement(step int64) {
-	atomic.AddInt64(&pt.throughputCounter, -step)
-}
-
-func (pt *PriceTable) GetCount() int64 {
-	// return atomic.LoadInt64(&cc.throughtputCounter)
-	return atomic.SwapInt64(&pt.throughputCounter, 0)
-}
-
-func (pt *PriceTable) latencyCheck() {
-	for range time.Tick(pt.priceUpdateRate) {
-		// create a new incoming context with the "request-id" as "0"
-		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
-
-		// change to using the average latency
-		pt.UpdateOwnPrice(ctx, pt.observedDelay.Milliseconds() > pt.latencyThreshold.Milliseconds()*pt.GetCount())
-		pt.observedDelay = time.Duration(0)
-	}
-}
-
-// queuingCheck checks if the queuing delay of go routine is greater than the latency SLO.
-func (pt *PriceTable) queuingCheck() {
-	// init a null histogram
-	var prevHist *metrics.Float64Histogram
-	for range time.Tick(pt.priceUpdateRate) {
-		// get the current histogram
-		currHist := readHistogram()
-
-		// calculate the differernce between the two histograms prevHist and currHist
-		diff := metrics.Float64Histogram{}
-		// if preHist is empty pointer, return currHist
-		if prevHist == nil {
-			diff = *currHist
-		} else {
-			diff = GetHistogramDifference(*prevHist, *currHist)
-		}
-		// maxLatency is the max of the histogram in milliseconds.
-		gapLatency := maximumBucket(&diff)
-		// medianLatency := medianBucket(&diff)
-		// gapLatency := percentileBucket(&diff, 90)
-
-		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
-
-		// ToDo: move the print of the histogram to a file
-
-		cumulativeLat := medianBucket(currHist)
-		// printHistogram(currHist)
-		pt.logger(ctx, "[Cumulative Waiting Time Median]:	%f ms.\n", cumulativeLat)
-		// printHistogram(&diff)
-		pt.logger(ctx, "[Incremental Waiting Time 90-tile]:	%f ms.\n", percentileBucket(&diff, 90))
-		pt.logger(ctx, "[Incremental Waiting Time Median]:	%f ms.\n", medianBucket(&diff))
-		pt.logger(ctx, "[Incremental Waiting Time Maximum]:	%f ms.\n", maximumBucket(&diff))
-
-		pt.UpdateOwnPrice(ctx, int64(gapLatency*1000) > pt.latencyThreshold.Microseconds())
-		// copy the content of current histogram to the previous histogram
-		prevHist = currHist
-	}
-}
-
-// throughputCheck decrements the counter by 2x every x milliseconds.
-func (pt *PriceTable) throughputCheck() {
-	for range time.Tick(pt.priceUpdateRate) {
-		// pt.Decrement(pt.throughputThreshold)
-		// Create an empty context
-		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
-		pt.logger(ctx, "[Throughput Counter]:	The throughtput counter is %d\n", pt.throughputCounter)
-		// pt.UpdateOwnPrice(ctx, pt.GetCount() > 0)
-		// update own price if getCounter is greater than the threshold
-		pt.UpdateOwnPrice(ctx, pt.GetCount() > pt.throughputThreshold)
-	}
-}
-
-// checkBoth checks both throughput and latency.
-func (pt *PriceTable) checkBoth() {
-	var prevHist *metrics.Float64Histogram
-	for range time.Tick(pt.priceUpdateRate) {
-		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
-		pt.logger(ctx, "[Throughput Counter]:	The throughtput counter is %d\n", pt.throughputCounter)
-
-		// get the current histogram
-		currHist := readHistogram()
-
-		// calculate the differernce between the two histograms prevHist and currHist
-		diff := metrics.Float64Histogram{}
-		// if preHist is empty pointer, return currHist
-		if prevHist == nil {
-			diff = *currHist
-		} else {
-			diff = GetHistogramDifference(*prevHist, *currHist)
-		}
-		// maxLatency is the max of the histogram in milliseconds.
-		gapLatency := maximumBucket(&diff)
-		// medianLatency := medianBucket(&diff)
-		// gapLatency := percentileBucket(&diff, 90)
-
-		cumulativeLat := medianBucket(currHist)
-		// printHistogram(currHist)
-		pt.logger(ctx, "[Cumulative Waiting Time Median]:	%f ms.\n", cumulativeLat)
-		// printHistogram(&diff)
-		pt.logger(ctx, "[Incremental Waiting Time 90-tile]:	%f ms.\n", percentileBucket(&diff, 90))
-		pt.logger(ctx, "[Incremental Waiting Time Median]:	%f ms.\n", medianBucket(&diff))
-		pt.logger(ctx, "[Incremental Waiting Time Maximum]:	%f ms.\n", maximumBucket(&diff))
-
-		pt.UpdateOwnPrice(ctx, pt.GetCount() > pt.throughputThreshold && int64(gapLatency*1000) > pt.latencyThreshold.Microseconds())
-		// copy the content of current histogram to the previous histogram
-		prevHist = currHist
-	}
-}
-
 // tokenRefill is a goroutine that refills the tokens in the price table.
 func (pt *PriceTable) tokenRefill() {
 	for range time.Tick(pt.tokenUpdateRate) {
@@ -369,46 +253,6 @@ func (pt *PriceTable) RateLimiting(ctx context.Context, tokens int64, methodName
 		pt.logger(ctx, "[Prepare Req]: Request blocked for lack of tokens.")
 		return RateLimited
 	}
-	return nil
-}
-
-func (pt *PriceTable) RetrieveDSPrice(ctx context.Context, methodName string) (int64, error) {
-	// retrive downstream node name involved in the request from callmap.
-	downstreamNames, _ := pt.callMap[methodName]
-	var downstreamPriceSum int64
-	for _, downstreamName := range downstreamNames {
-		downstreamPriceString, _ := pt.priceTableMap.LoadOrStore(downstreamName, pt.initprice)
-		downstreamPrice := downstreamPriceString.(int64)
-		downstreamPriceSum += downstreamPrice
-	}
-	// fmt.Println("Total Price:", downstreamPriceSum)
-	return downstreamPriceSum, nil
-}
-
-func (pt *PriceTable) RetrieveTotalPrice(ctx context.Context, methodName string) (string, error) {
-	ownPrice_string, _ := pt.priceTableMap.LoadOrStore("ownprice", pt.initprice)
-	ownPrice := ownPrice_string.(int64)
-	downstreamPrice, _ := pt.RetrieveDSPrice(ctx, methodName)
-	totalPrice := ownPrice + downstreamPrice
-	price_string := strconv.FormatInt(totalPrice, 10)
-	return price_string, nil
-}
-
-// Assume that own price is per microservice and it does not change across different types of requests/interfaces.
-func (pt *PriceTable) UpdateOwnPrice(ctx context.Context, congestion bool) error {
-	// fmt.Println("Throughtput counter:", atomic.LoadInt64(&t.throughtputCounter))
-
-	ownPrice_string, _ := pt.priceTableMap.LoadOrStore("ownprice", pt.initprice)
-	ownPrice := ownPrice_string.(int64)
-	// The following code has been moved to decrementCounter() for pinpointThroughput.
-	pt.logger(ctx, "[Update OwnPrice]:	congestion is %t, own price %d incremented by %d\n", congestion, ownPrice, pt.priceStep)
-	if congestion {
-		ownPrice += pt.priceStep
-	} else if ownPrice > 0 {
-		ownPrice -= pt.priceStep
-	}
-	pt.priceTableMap.Store("ownprice", ownPrice)
-	pt.logger(ctx, "[Update OwnPrice]:	Own price updated to %d\n", ownPrice)
 	return nil
 }
 
@@ -452,47 +296,6 @@ func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName
 	return tokenleft, nil
 }
 
-// SplitTokens splits the tokens left on the request to the downstream services.
-// It returns a map, with the downstream service names as keys, and tokens left for them as values.
-func (pt *PriceTable) SplitTokens(ctx context.Context, tokenleft int64, methodName string) ([]string, error) {
-	downstreamNames, _ := pt.callMap[methodName]
-	size := len(downstreamNames)
-	if size == 0 {
-		return nil, nil
-	}
-
-	downstreamTokens := []string{}
-	downstreamPriceSum, _ := pt.RetrieveDSPrice(ctx, methodName)
-	pt.logger(ctx, "[Split tokens]:	downstream total price is %d\n", downstreamPriceSum)
-
-	pt.logger(ctx, "[Split tokens]:	%d downstream services for %s \n", size, pt.nodeName)
-	tokenleftPerDownstream := (tokenleft - downstreamPriceSum) / int64(size)
-	pt.logger(ctx, "[Split tokens]:	extra token left for each ds is %d\n", tokenleftPerDownstream)
-	for _, downstreamName := range downstreamNames {
-		downstreamPriceString, _ := pt.priceTableMap.LoadOrStore(downstreamName, int64(0))
-		downstreamPrice := downstreamPriceString.(int64)
-		downstreamToken := tokenleftPerDownstream + downstreamPrice
-		downstreamTokens = append(downstreamTokens, "tokens-"+downstreamName, strconv.FormatInt(downstreamToken, 10))
-		pt.logger(ctx, "[Split tokens]:	token for %s is %d + %d\n", downstreamName, tokenleftPerDownstream, downstreamPrice)
-	}
-	return downstreamTokens, nil
-}
-
-// UpdatePrice incorperates the downstream price table to its own price table.
-func (pt *PriceTable) UpdatePrice(ctx context.Context, method string, downstreamPrice int64) (int64, error) {
-
-	// Update the downstream price.
-	pt.priceTableMap.Store(method, downstreamPrice)
-	pt.logger(ctx, "[Received Resp]:	Downstream price of %s updated to %d\n", method, downstreamPrice)
-
-	// var totalPrice int64
-	// ownPrice, _ := t.ptmap.LoadOrStore("ownprice", t.initprice)
-	// totalPrice = ownPrice.(int64) + downstreamPrice
-	// t.ptmap.Store("totalprice", totalPrice)
-	// pt.logger(ctx, "[Received Resp]:	Total price updated to %d\n", totalPrice)
-	return downstreamPrice, nil
-}
-
 // unaryInterceptor is an example unary interceptor.
 func (pt *PriceTable) UnaryInterceptorClient(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	// Jiali: the following line print the method name of the req/response, will be used to update the
@@ -506,7 +309,7 @@ func (pt *PriceTable) UnaryInterceptorClient(ctx context.Context, method string,
 	// Jiali: after replied. update and store the price info for future
 	if len(header["price"]) > 0 {
 		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
-		pt.UpdatePrice(ctx, header["name"][0], priceDownstream)
+		pt.UpdateDownstreamPrice(ctx, header["name"][0], priceDownstream)
 		pt.logger(ctx, "[After Resp]:	The price table is from %s\n", header["name"])
 	} else {
 		pt.logger(ctx, "[After Resp]:	No price table received\n")
@@ -530,9 +333,6 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 	for k, v := range md {
 		pt.logger(ctx, "[Sending Req Enduser]:	The metadata for request is %s: %s\n", k, v)
 	}
-	// rand.Seed(time.Now().UnixNano())
-	// tok := rand.Intn(30)
-	// tok_string := strconv.Itoa(tok)
 
 	var tok int64
 	// Set a timer for the client to timeout if it has been waiting for too long.
@@ -568,80 +368,12 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 	// Jiali: after replied. update and store the price info for future
 	if len(header["price"]) > 0 {
 		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
-		pt.UpdatePrice(ctx, header["name"][0], priceDownstream)
+		pt.UpdateDownstreamPrice(ctx, header["name"][0], priceDownstream)
 		pt.logger(ctx, "[After Resp]:	The price table is from %s\n", header["name"])
 	} else {
 		pt.logger(ctx, "[After Resp]:	No price table received\n")
 	}
 	return err
-}
-
-// logger is to mock a sophisticated logging system. To simplify the example, we just print out the content.
-func (pt *PriceTable) logger(ctx context.Context, format string, a ...interface{}) {
-	if pt.debug {
-		var reqid int64
-		var err error
-		var ok, found bool
-
-		// Check incoming context for "request-id" metadata
-		if md, ok := metadata.FromIncomingContext(ctx); ok {
-			if requestIDs, found := md["request-id"]; found && len(requestIDs) > 0 {
-				reqid, err = strconv.ParseInt(requestIDs[0], 10, 64)
-				if err != nil {
-					// Error parsing request ID, handle accordingly
-					panic(err)
-				}
-			}
-		}
-
-		// Check outgoing context for "request-id" metadata only if it wasn't found in the incoming context
-		if !ok || !found {
-			if md, ok := metadata.FromOutgoingContext(ctx); ok {
-				if requestIDs, found := md["request-id"]; found && len(requestIDs) > 0 {
-					reqid, err = strconv.ParseInt(requestIDs[0], 10, 64)
-					if err != nil {
-						// Error parsing request ID, handle accordingly
-						panic(err)
-					}
-				}
-			}
-		}
-		// md, ok := metadata.FromIncomingContext(ctx)
-		// var reqid int64
-		// err := errMissingMetadata
-		// if ok {
-		// 	reqid, err = strconv.ParseInt(md["request-id"][0], 10, 64)
-		// }
-		// // if request-id is empty, then check the outgoing context
-		// if err != nil {
-		// 	md, ok := metadata.FromOutgoingContext(ctx)
-		// 	if !ok {
-		// 		panic(err)
-		// 	}
-		// 	reqid, err = strconv.ParseInt(md["request-id"][0], 10, 64)
-		// 	if err != nil {
-		// 		// mdBytes, ok := ctx.Value("metadata").([]byte)
-		// 		// if !ok {
-		// 		// 	// panic, the error of errMissingMetadata
-		// 		// 	panic(errMissingMetadata)
-		// 		// }
-		// 		// // Unmarshal the metadata byte array into a map[string]string
-		// 		// var mdMap map[string]string
-		// 		// err = json.Unmarshal(mdBytes, &mdMap)
-		// 		// if err != nil {
-		// 		// 	panic(err)
-		// 		// }
-		// 		// reqid, err = strconv.ParseInt(mdMap["request-id"], 10, 64)
-		// 		// if err != nil {
-		// 		panic(err)
-		// 		// }
-		// 	}
-		// }
-		if reqid%pt.debugFreq == 0 {
-			timestamp := time.Now().Format("2006-01-02T15:04:05.999999999-07:00")
-			fmt.Printf("LOG: "+timestamp+"|\t"+format+"\n", a...)
-		}
-	}
 }
 
 // func getMethodInfo(ctx context.Context) {
