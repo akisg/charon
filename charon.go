@@ -130,17 +130,13 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 	if debugFreq, ok := options["debugFreq"].(int64); ok {
 		priceTable.debugFreq = debugFreq
 		// print the debug and debugFreq of the node if the name is not client
-		if nodeName != "client" {
-			priceTable.logger(ctx, "debug and debugFreq of %s set to %v and %v\n", nodeName, priceTable.debug, debugFreq)
-		}
+		priceTable.logger(ctx, "debug and debugFreq of %s set to %v and %v\n", nodeName, priceTable.debug, debugFreq)
 	}
 
 	if initprice, ok := options["initprice"].(int64); ok {
 		priceTable.initprice = initprice
 		// print the initprice of the node if the name is not client
-		if nodeName != "client" {
-			priceTable.logger(ctx, "initprice of %s set to %d\n", nodeName, priceTable.initprice)
-		}
+		priceTable.logger(ctx, "initprice of %s set to %d\n", nodeName, priceTable.initprice)
 	}
 
 	if rateLimiting, ok := options["rateLimiting"].(bool); ok {
