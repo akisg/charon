@@ -575,7 +575,23 @@ func (pt *PriceTable) logger(ctx context.Context, format string, a ...interface{
 			if err != nil {
 				md, ok := metadata.FromOutgoingContext(ctx)
 				if ok {
-					reqid, _ = strconv.ParseInt(md["request-id"][0], 10, 64)
+					reqid, err = strconv.ParseInt(md["request-id"][0], 10, 64)
+					if err != nil {
+						mdBytes, ok := ctx.Value("metadata").([]byte)
+						if !ok {
+							// panic, the error of errMissingMetadata
+							panic(errMissingMetadata)
+						}
+						// Unmarshal the metadata byte array into a map[string]string
+						var mdMap map[string]string
+						err = json.Unmarshal(mdBytes, &mdMap)
+						if err != nil {
+							panic(err)
+						}
+						reqid, err = strconv.ParseInt(mdMap["request-id"], 10, 64)
+						if err != nil {
+							panic(err)
+						}
 				}
 			}
 			if reqid%pt.debugFreq == 0 {
