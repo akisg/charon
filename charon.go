@@ -2,7 +2,6 @@ package charon
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"runtime/metrics"
@@ -576,36 +575,38 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 func (pt *PriceTable) logger(ctx context.Context, format string, a ...interface{}) {
 	if pt.debug {
 		md, ok := metadata.FromIncomingContext(ctx)
-		if ok {
-			reqid, err := strconv.ParseInt(md["request-id"][0], 10, 64)
-			// if request-id is empty, then check the outgoing context
+		if !ok {
+			panic(errMissingMetadata)
+		}
+		reqid, err := strconv.ParseInt(md["request-id"][0], 10, 64)
+		// if request-id is empty, then check the outgoing context
+		if err != nil {
+			md, ok := metadata.FromOutgoingContext(ctx)
+			if !ok {
+				panic(errMissingMetadata)
+			}
+			reqid, err = strconv.ParseInt(md["request-id"][0], 10, 64)
 			if err != nil {
-				md, ok := metadata.FromOutgoingContext(ctx)
-				if ok {
-					reqid, err = strconv.ParseInt(md["request-id"][0], 10, 64)
-					if err != nil {
-						mdBytes, ok := ctx.Value("metadata").([]byte)
-						if !ok {
-							// panic, the error of errMissingMetadata
-							panic(errMissingMetadata)
-						}
-						// Unmarshal the metadata byte array into a map[string]string
-						var mdMap map[string]string
-						err = json.Unmarshal(mdBytes, &mdMap)
-						if err != nil {
-							panic(err)
-						}
-						reqid, err = strconv.ParseInt(mdMap["request-id"], 10, 64)
-						if err != nil {
-							panic(err)
-						}
-					}
-				}
+				// mdBytes, ok := ctx.Value("metadata").([]byte)
+				// if !ok {
+				// 	// panic, the error of errMissingMetadata
+				// 	panic(errMissingMetadata)
+				// }
+				// // Unmarshal the metadata byte array into a map[string]string
+				// var mdMap map[string]string
+				// err = json.Unmarshal(mdBytes, &mdMap)
+				// if err != nil {
+				// 	panic(err)
+				// }
+				// reqid, err = strconv.ParseInt(mdMap["request-id"], 10, 64)
+				// if err != nil {
+				panic(err)
+				// }
 			}
-			if reqid%pt.debugFreq == 0 {
-				timestamp := time.Now().Format("2006-01-02T15:04:05.999999999-07:00")
-				fmt.Printf("LOG: "+timestamp+"|\t"+format+"\n", a...)
-			}
+		}
+		if reqid%pt.debugFreq == 0 {
+			timestamp := time.Now().Format("2006-01-02T15:04:05.999999999-07:00")
+			fmt.Printf("LOG: "+timestamp+"|\t"+format+"\n", a...)
 		}
 	}
 }
