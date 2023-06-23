@@ -2,6 +2,7 @@ package charon
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"runtime/metrics"
@@ -517,7 +518,16 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 
 	// pt.logger(ctx, "[Before Req]:	The method name for price table is ")
 	// pt.logger(ctx, method)
+	md, ok := metadata.FromOutgoingContext(ctx)
+	if !ok {
+		return nil, errMissingMetadata
+	}
 
+	// print all the k-v pairs in the metadata md
+	// pt.logger(ctx, "[Received Req]:	The sender's name for request is %s\n", md["name"])
+	for k, v := range md {
+		pt.logger(ctx, "[Sending Req Enduser]:	The metadata for request is %s: %s\n", k, v)
+	}
 	// rand.Seed(time.Now().UnixNano())
 	// tok := rand.Intn(30)
 	// tok_string := strconv.Itoa(tok)
@@ -592,6 +602,7 @@ func (pt *PriceTable) logger(ctx context.Context, format string, a ...interface{
 						if err != nil {
 							panic(err)
 						}
+					}
 				}
 			}
 			if reqid%pt.debugFreq == 0 {
