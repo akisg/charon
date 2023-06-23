@@ -574,10 +574,10 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 // logger is to mock a sophisticated logging system. To simplify the example, we just print out the content.
 func (pt *PriceTable) logger(ctx context.Context, format string, a ...interface{}) {
 	if pt.debug {
-		md, ok := metadata.FromIncomingContext(ctx)
-		if !ok {
-			panic(errMissingMetadata)
-		}
+		md, _ := metadata.FromIncomingContext(ctx)
+		// if !ok {
+		// panic(errMissingMetadata)
+		// }
 		reqid, err := strconv.ParseInt(md["request-id"][0], 10, 64)
 		// if request-id is empty, then check the outgoing context
 		if err != nil {
