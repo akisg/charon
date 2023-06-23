@@ -574,37 +574,61 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 // logger is to mock a sophisticated logging system. To simplify the example, we just print out the content.
 func (pt *PriceTable) logger(ctx context.Context, format string, a ...interface{}) {
 	if pt.debug {
-		md, ok := metadata.FromIncomingContext(ctx)
 		var reqid int64
-		err := errMissingMetadata
-		if ok {
-			reqid, err = strconv.ParseInt(md["request-id"][0], 10, 64)
-		}
-		// if request-id is empty, then check the outgoing context
-		if err != nil {
-			md, ok := metadata.FromOutgoingContext(ctx)
-			if !ok {
-				panic(err)
-			}
-			reqid, err = strconv.ParseInt(md["request-id"][0], 10, 64)
-			if err != nil {
-				// mdBytes, ok := ctx.Value("metadata").([]byte)
-				// if !ok {
-				// 	// panic, the error of errMissingMetadata
-				// 	panic(errMissingMetadata)
-				// }
-				// // Unmarshal the metadata byte array into a map[string]string
-				// var mdMap map[string]string
-				// err = json.Unmarshal(mdBytes, &mdMap)
-				// if err != nil {
-				// 	panic(err)
-				// }
-				// reqid, err = strconv.ParseInt(mdMap["request-id"], 10, 64)
-				// if err != nil {
-				panic(err)
-				// }
+		var err error
+
+		// Check incoming context for "request-id" metadata
+		if md, ok := metadata.FromIncomingContext(ctx); ok {
+			if requestIDs, found := md["request-id"]; found && len(requestIDs) > 0 {
+				reqid, err = strconv.ParseInt(requestIDs[0], 10, 64)
+				if err != nil {
+					// Error parsing request ID, handle accordingly
+					panic(err)
+				}
 			}
 		}
+
+		// Check outgoing context for "request-id" metadata
+		if md, ok := metadata.FromOutgoingContext(ctx); ok {
+			if requestIDs, found := md["request-id"]; found && len(requestIDs) > 0 {
+				reqid, err = strconv.ParseInt(requestIDs[0], 10, 64)
+				if err != nil {
+					// Error parsing request ID, handle accordingly
+					panic(err)
+				}
+			}
+		}
+		// md, ok := metadata.FromIncomingContext(ctx)
+		// var reqid int64
+		// err := errMissingMetadata
+		// if ok {
+		// 	reqid, err = strconv.ParseInt(md["request-id"][0], 10, 64)
+		// }
+		// // if request-id is empty, then check the outgoing context
+		// if err != nil {
+		// 	md, ok := metadata.FromOutgoingContext(ctx)
+		// 	if !ok {
+		// 		panic(err)
+		// 	}
+		// 	reqid, err = strconv.ParseInt(md["request-id"][0], 10, 64)
+		// 	if err != nil {
+		// 		// mdBytes, ok := ctx.Value("metadata").([]byte)
+		// 		// if !ok {
+		// 		// 	// panic, the error of errMissingMetadata
+		// 		// 	panic(errMissingMetadata)
+		// 		// }
+		// 		// // Unmarshal the metadata byte array into a map[string]string
+		// 		// var mdMap map[string]string
+		// 		// err = json.Unmarshal(mdBytes, &mdMap)
+		// 		// if err != nil {
+		// 		// 	panic(err)
+		// 		// }
+		// 		// reqid, err = strconv.ParseInt(mdMap["request-id"], 10, 64)
+		// 		// if err != nil {
+		// 		panic(err)
+		// 		// }
+		// 	}
+		// }
 		if reqid%pt.debugFreq == 0 {
 			timestamp := time.Now().Format("2006-01-02T15:04:05.999999999-07:00")
 			fmt.Printf("LOG: "+timestamp+"|\t"+format+"\n", a...)
