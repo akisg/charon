@@ -32,6 +32,7 @@ type PriceTable struct {
 	callMap            map[string][]string
 	priceTableMap      sync.Map
 	rateLimiting       bool
+	rateLimitWaiting   bool
 	loadShedding       bool
 	pinpointThroughput bool
 	pinpointLatency    bool
@@ -163,7 +164,7 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
 	for {
 		// if waiting for longer than ClientTimeout, return error RateLimited
-		if pt.rateLimiting && time.Since(startTime) > pt.clientTimeOut {
+		if pt.rateLimiting && pt.rateLimitWaiting && time.Since(startTime) > pt.clientTimeOut {
 			pt.logger(ctx, "[Client Timeout]:	Client timeout waiting for tokens.\n")
 			return status.Errorf(codes.DeadlineExceeded, "Client timeout waiting for tokens.")
 		}
@@ -175,6 +176,10 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 		ratelimit := pt.RateLimiting(ctx, tok, "echo")
 		if ratelimit == RateLimited {
 			pt.logger(ctx, "[Rate Limited]:	Client is rate limited.\n")
+			if !pt.rateLimitWaiting {
+				// return error RateLimited
+				return status.Errorf(codes.ResourceExhausted, "Client is rate limited, req dropped without waiting.")
+			}
 			<-pt.rateLimiter
 		} else {
 			break

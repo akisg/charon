@@ -53,6 +53,7 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 		callMap:             callmap,
 		priceTableMap:       sync.Map{},
 		rateLimiting:        false,
+		rateLimitWaiting:    false,
 		loadShedding:        false,
 		pinpointThroughput:  false,
 		pinpointLatency:     false,
@@ -96,6 +97,11 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 	if rateLimiting, ok := options["rateLimiting"].(bool); ok {
 		priceTable.rateLimiting = rateLimiting
 		priceTable.logger(ctx, "rateLimiting 		of %s set to %v\n", nodeName, rateLimiting)
+	}
+
+	if rateLimitWaiting, ok := options["rateLimitWaiting"].(bool); ok {
+		priceTable.rateLimitWaiting = rateLimitWaiting
+		priceTable.logger(ctx, "rateLimitWaiting 	of %s set to %v\n", nodeName, rateLimitWaiting)
 	}
 
 	if loadShedding, ok := options["loadShedding"].(bool); ok {
