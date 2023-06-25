@@ -55,7 +55,6 @@ func (pt *PriceTable) RetrieveTotalPrice(ctx context.Context, methodName string)
 
 // Assume that own price is per microservice and it does not change across different types of requests/interfaces.
 func (pt *PriceTable) UpdateOwnPrice(ctx context.Context, congestion bool) error {
-	// fmt.Println("Throughtput counter:", atomic.LoadInt64(&t.throughtputCounter))
 
 	ownPrice_string, _ := pt.priceTableMap.LoadOrStore("ownprice", pt.initprice)
 	ownPrice := ownPrice_string.(int64)
@@ -63,6 +62,9 @@ func (pt *PriceTable) UpdateOwnPrice(ctx context.Context, congestion bool) error
 	pt.logger(ctx, "[Update OwnPrice]:	congestion is %t, own price %d incremented by %d\n", congestion, ownPrice, pt.priceStep)
 	if congestion {
 		ownPrice += pt.priceStep
+		if pt.guidePrice > -1 {
+			ownPrice = pt.guidePrice
+		}
 	} else if ownPrice > 0 {
 		ownPrice -= pt.priceStep
 	}
