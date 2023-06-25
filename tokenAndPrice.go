@@ -59,7 +59,7 @@ func (pt *PriceTable) UpdateOwnPrice(ctx context.Context, congestion bool) error
 	ownPrice_string, _ := pt.priceTableMap.LoadOrStore("ownprice", pt.initprice)
 	ownPrice := ownPrice_string.(int64)
 	// The following code has been moved to decrementCounter() for pinpointThroughput.
-	pt.logger(ctx, "[Update OwnPrice]:	congestion is %t, own price %d incremented by %d\n", congestion, ownPrice, pt.priceStep)
+	pt.logger(ctx, "[Update OwnPrice]:	congestion is %t, own price %d, step %d\n", congestion, ownPrice, pt.priceStep)
 	if congestion {
 		ownPrice += pt.priceStep
 		if pt.guidePrice > -1 {

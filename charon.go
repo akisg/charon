@@ -175,12 +175,15 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 		}
 		ratelimit := pt.RateLimiting(ctx, tok, "echo")
 		if ratelimit == RateLimited {
-			pt.logger(ctx, "[Rate Limited]:	Client is rate limited.\n")
 			if !pt.rateLimitWaiting {
-				// return error RateLimited
+				pt.logger(ctx, "[Rate Limited]:	Client is rate limited, req dropped without waiting.\n")
 				return status.Errorf(codes.ResourceExhausted, "Client is rate limited, req dropped without waiting.")
 			}
 			<-pt.rateLimiter
+			// pt.logger(ctx, "[Rate Limited]:	Client has been rate limited for %d ms, \n", time.Since(startTime).Milliseconds())
+			// log the waiting time so far for client and how long until timeout
+			pt.logger(ctx, "[Rate Limited]:	Client has been rate limited for %d ms, %d ms left until timeout.\n",
+				time.Since(startTime).Milliseconds(), (pt.clientTimeOut - time.Since(startTime)).Milliseconds())
 		} else {
 			break
 		}
