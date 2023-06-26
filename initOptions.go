@@ -66,9 +66,9 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 		throughputCounter:   0,
 		priceUpdateRate:     time.Millisecond * 10,
 		observedDelay:       time.Duration(0),
-		clientTimeOut:       time.Millisecond * 5,
-		throughputThreshold: 20,
-		latencyThreshold:    time.Millisecond * 16,
+		clientTimeOut:       time.Duration(0),
+		throughputThreshold: 0,
+		latencyThreshold:    time.Duration(0),
 		priceStep:           1,
 		debug:               false,
 		debugFreq:           4000,
@@ -97,11 +97,6 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 	if rateLimiting, ok := options["rateLimiting"].(bool); ok {
 		priceTable.rateLimiting = rateLimiting
 		priceTable.logger(ctx, "rateLimiting 		of %s set to %v\n", nodeName, rateLimiting)
-	}
-
-	if rateLimitWaiting, ok := options["rateLimitWaiting"].(bool); ok {
-		priceTable.rateLimitWaiting = rateLimitWaiting
-		priceTable.logger(ctx, "rateLimitWaiting 	of %s set to %v\n", nodeName, rateLimitWaiting)
 	}
 
 	if loadShedding, ok := options["loadShedding"].(bool); ok {
@@ -148,6 +143,14 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 		priceTable.clientTimeOut = clientTimeOut
 		priceTable.logger(ctx, "clientTimeout		of %s set to %v\n", nodeName, clientTimeOut)
 	}
+
+	// priceTable.rateLimitWaiting = true if and only if the clientTimeOut is set to be greater than 0 duration
+	if priceTable.clientTimeOut > 0 {
+		priceTable.rateLimitWaiting = true
+	} else {
+		priceTable.rateLimitWaiting = false
+	}
+	priceTable.logger(ctx, "rateLimitWaiting 	of %s set to %v\n", nodeName, priceTable.rateLimitWaiting)
 
 	if throughputThreshold, ok := options["throughputThreshold"].(int64); ok {
 		priceTable.throughputThreshold = throughputThreshold
