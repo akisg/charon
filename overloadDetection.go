@@ -3,7 +3,6 @@ package charon
 import (
 	"context"
 	"runtime/metrics"
-	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -138,10 +137,8 @@ func (pt *PriceTable) overloadDetection(ctx context.Context) bool {
 		}
 	} else if pt.pinpointQueuing {
 		// read the gapLatency from context ctx
-		gapLatency, err := strconv.ParseFloat(ctx.Value("gapLatency").(string), 64)
-		if err != nil {
-			panic(err)
-		}
+		gapLatency := ctx.Value("gapLatency").(float64)
+
 		if int64(gapLatency*1000) > pt.latencyThreshold.Microseconds() {
 			return true
 		}
