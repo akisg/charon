@@ -120,11 +120,17 @@ func computation(duration int) {
 
 // this function reads the currHist from metrics
 func readHistogram() *metrics.Float64Histogram {
+	// Create a sample for metric /sched/latencies:seconds and /sync/mutex/wait/total:seconds
 	const queueingDelay = "/sched/latencies:seconds"
+	measureMutexWait := false
 
 	// Create a sample for the metric.
 	sample := make([]metrics.Sample, 1)
 	sample[0].Name = queueingDelay
+	if measureMutexWait {
+		const mutexWait = "/sync/mutex/wait/total:seconds"
+		sample[1].Name = mutexWait
+	}
 
 	// Sample the metric.
 	metrics.Read(sample)
