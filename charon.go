@@ -179,12 +179,10 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 				pt.logger(ctx, "[Rate Limited]:	Client is rate limited, req dropped without waiting.\n")
 				// the request is dropped without waiting in this scenario, but we want to return an error to the client
 				// to do this, we use a fake invoker without actually sending the request to the server
-				// Create a new context derived from the existing context and set a timeout on it
-				timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(0)) // Set the desired timeout duration
-				defer cancel()
-
-				// Invoke the gRPC method with the new context
-				_ = invoker(timeoutCtx, method, req, reply, cc, opts...)
+				// Invoke the gRPC method with the new callOptions: MaxCallSendMsgSize as 0
+				// append to opts
+				opts = append(opts, grpc.MaxCallSendMsgSize(0))
+				_ = invoker(ctx, method, req, reply, cc, opts...)
 				return status.Error(codes.ResourceExhausted, "Client is rate limited, req dropped without waiting.")
 			}
 			<-pt.rateLimiter
