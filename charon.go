@@ -166,6 +166,10 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 		// if waiting for longer than ClientTimeout, return error RateLimited
 		if pt.rateLimiting && pt.rateLimitWaiting && time.Since(startTime) > pt.clientTimeOut {
 			pt.logger(ctx, "[Client Timeout]:	Client timeout waiting for tokens.\n")
+			// Invoke the gRPC method with the new callOptions: MaxCallSendMsgSize as 0
+			// append to opts
+			opts = append(opts, grpc.MaxCallSendMsgSize(0))
+			_ = invoker(ctx, method, req, reply, cc, opts...)
 			return status.Errorf(codes.DeadlineExceeded, "Client timeout waiting for tokens.")
 		}
 		// right now let's assume that client uses all the tokens on her next request.
