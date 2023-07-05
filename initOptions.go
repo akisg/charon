@@ -2,6 +2,7 @@ package charon
 
 import (
 	"context"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -64,6 +65,8 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 		tokenUpdateRate:     time.Millisecond * 10,
 		lastUpdateTime:      time.Now(),
 		tokenUpdateStep:     1,
+		tokenRefillDist:     "fixed",
+		tokenStrategy:       "all",
 		throughputCounter:   0,
 		priceUpdateRate:     time.Millisecond * 10,
 		observedDelay:       time.Duration(0),
@@ -135,6 +138,15 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 		priceTable.logger(ctx, "tokenUpdateStep		of %s set to %v\n", nodeName, tokenUpdateStep)
 	}
 
+	if tokenRefillDist, ok := options["tokenRefillDist"].(string); ok {
+		// if the tokenRefillDist is not "fixed" or "uniform", then set it to be "fixed"
+		if tokenRefillDist != "fixed" && tokenRefillDist != "uniform" {
+			tokenRefillDist = "fixed"
+		}
+		priceTable.tokenRefillDist = tokenRefillDist
+		priceTable.logger(ctx, "tokenRefillDist		of %s set to %v\n", nodeName, tokenRefillDist)
+	}
+
 	if tokenStrategy, ok := options["tokenStrategy"].(string); ok {
 		// if the tokenStrategy is not "all" or "uniform", then set it to be "all"
 		if tokenStrategy != "all" && tokenStrategy != "uniform" {
@@ -203,7 +215,13 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 // tokenRefill is a goroutine that refills the tokens in the price table.
 func (pt *PriceTable) tokenRefill() {
 	for range time.Tick(pt.tokenUpdateRate) {
-		pt.tokensLeft += pt.tokenUpdateStep
+		// add tokens to the client deterministically or randomly, depending on the tokenRefillDist
+		if pt.tokenRefillDist == "fixed" {
+			pt.tokensLeft += pt.tokenUpdateStep
+		} else if pt.tokenRefillDist == "uniform" {
+			pt.tokensLeft += rand.Int63n(pt.tokenUpdateStep)
+		}
+
 		pt.lastUpdateTime = time.Now()
 		pt.unblockRateLimiter()
 		// ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
