@@ -3,6 +3,7 @@ package charon
 import (
 	"context"
 	"log"
+	"math/rand"
 	"time"
 
 	"strconv"
@@ -43,6 +44,7 @@ type PriceTable struct {
 	tokenUpdateRate     time.Duration
 	lastUpdateTime      time.Time
 	tokenUpdateStep     int64
+	tokenStrategy       string
 	throughputCounter   int64
 	priceUpdateRate     time.Duration
 	observedDelay       time.Duration
@@ -173,7 +175,13 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 			return status.Errorf(codes.DeadlineExceeded, "Client timeout waiting for tokens.")
 		}
 		// right now let's assume that client uses all the tokens on her next request.
-		tok = pt.tokensLeft
+		if pt.tokenStrategy == "all" {
+			tok = pt.tokensLeft
+		} else if pt.tokenStrategy == "uniform" {
+			// set the tok to be a uniform random number between 0 and tokensLeft
+			tok = rand.Int63n(pt.tokensLeft)
+		}
+
 		if !pt.rateLimiting {
 			break
 		}

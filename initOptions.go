@@ -25,6 +25,7 @@ func NewPriceTable(initprice int64, nodeName string, callmap map[string][]string
 		tokenUpdateRate:    time.Millisecond * 10,
 		lastUpdateTime:     time.Now(),
 		tokenUpdateStep:    1,
+		tokenStrategy:      "all",
 		throughputCounter:  0,
 		priceUpdateRate:    time.Millisecond * 10,
 		observedDelay:      time.Duration(0),
@@ -132,6 +133,15 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 	if tokenUpdateStep, ok := options["tokenUpdateStep"].(int64); ok {
 		priceTable.tokenUpdateStep = tokenUpdateStep
 		priceTable.logger(ctx, "tokenUpdateStep		of %s set to %v\n", nodeName, tokenUpdateStep)
+	}
+
+	if tokenStrategy, ok := options["tokenStrategy"].(string); ok {
+		// if the tokenStrategy is not "all" or "uniform", then set it to be "all"
+		if tokenStrategy != "all" && tokenStrategy != "uniform" {
+			tokenStrategy = "all"
+		}
+		priceTable.tokenStrategy = tokenStrategy
+		priceTable.logger(ctx, "tokenStrategy		of %s set to %v\n", nodeName, tokenStrategy)
 	}
 
 	if priceUpdateRate, ok := options["priceUpdateRate"].(time.Duration); ok {
