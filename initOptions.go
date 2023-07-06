@@ -261,7 +261,8 @@ func (pt *PriceTable) nextTokenUpdateInterval(lambda float64) time.Duration {
 	// For example, you can use a lambda value of 0.5 for the exponential distribution
 	// lambda := 0.5
 	nextTickDuration := time.Duration(rand.ExpFloat64()/lambda) * time.Millisecond
-
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
+	pt.logger(ctx, "[TokenRefill]: Next tick duration: %v\n", nextTickDuration)
 	// Return the next tick duration
 	return time.Duration(nextTickDuration)
 }
