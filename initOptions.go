@@ -219,12 +219,12 @@ func (pt *PriceTable) tokenRefill(tokenRefillDist string, tokenUpdateStep int64,
 		ticker := time.NewTicker(pt.initialTokenUpdateInterval())
 		defer ticker.Stop()
 		// lambda is 1 over pt.tokenUpdateRate.Milliseconds(), but make lambda a float64
-		lambda := float64(1) / float64(pt.tokenUpdateRate.Milliseconds())
+		lambda := float64(1) / float64(tokenUpdateRate.Milliseconds())
 
 		for range ticker.C {
 			// Add tokens to the client deterministically or randomly, depending on the tokenRefillDist
 			// if pt.tokenRefillDist == "fixed" {
-			pt.tokensLeft += pt.tokenUpdateStep
+			pt.tokensLeft += tokenUpdateStep
 			// }
 
 			pt.lastUpdateTime = time.Now()
