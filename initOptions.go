@@ -38,7 +38,7 @@ func NewPriceTable(initprice int64, nodeName string, callmap map[string][]string
 	// priceTable.rateLimiter <- 1
 	// Only refill the tokens when the interceptor is for enduser.
 	if priceTable.nodeName == "client" {
-		go priceTable.tokenRefill()
+		go priceTable.tokenRefill(priceTable.tokenRefillDist, priceTable.tokenUpdateStep, priceTable.tokenUpdateRate)
 	} else if priceTable.pinpointThroughput {
 		go priceTable.throughputCheck()
 	} else if priceTable.pinpointLatency {
@@ -140,7 +140,7 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 
 	if tokenRefillDist, ok := options["tokenRefillDist"].(string); ok {
 		// if the tokenRefillDist is not "fixed" or "uniform", then set it to be "fixed"
-		if tokenRefillDist != "fixed" && tokenRefillDist != "uniform" {
+		if tokenRefillDist != "fixed" && tokenRefillDist != "uniform" && tokenRefillDist != "poisson" {
 			tokenRefillDist = "fixed"
 		}
 		priceTable.tokenRefillDist = tokenRefillDist
@@ -196,7 +196,7 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 
 	// Rest of the code remains the same
 	if priceTable.nodeName == "client" {
-		go priceTable.tokenRefill()
+		go priceTable.tokenRefill(priceTable.tokenRefillDist, priceTable.tokenUpdateStep, priceTable.tokenUpdateRate)
 	} else {
 		if priceTable.pinpointQueuing && priceTable.pinpointThroughput {
 			go priceTable.checkBoth()
@@ -213,18 +213,55 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 }
 
 // tokenRefill is a goroutine that refills the tokens in the price table.
-func (pt *PriceTable) tokenRefill() {
-	for range time.Tick(pt.tokenUpdateRate) {
-		// add tokens to the client deterministically or randomly, depending on the tokenRefillDist
-		if pt.tokenRefillDist == "fixed" {
-			pt.tokensLeft += pt.tokenUpdateStep
-		} else if pt.tokenRefillDist == "uniform" {
-			pt.tokensLeft += rand.Int63n(pt.tokenUpdateStep)
-		}
+func (pt *PriceTable) tokenRefill(tokenRefillDist string, tokenUpdateStep int64, tokenUpdateRate time.Duration) {
+	if tokenRefillDist == "poisson" {
+		// Create a ticker with an initial tick duration
+		ticker := time.NewTicker(pt.initialTokenUpdateInterval())
+		// lambda is 1 over pt.tokenUpdateRate.Milliseconds(), but make lambda a float64
+		lambda := float64(1) / float64(pt.tokenUpdateRate.Milliseconds())
 
-		pt.lastUpdateTime = time.Now()
-		pt.unblockRateLimiter()
-		// ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
-		// pt.logger(ctx, "[TokenRefill]: Tokens refilled. Tokens left: %d\n", pt.tokensLeft)
+		for range ticker.C {
+			// Add tokens to the client deterministically or randomly, depending on the tokenRefillDist
+			// if pt.tokenRefillDist == "fixed" {
+			pt.tokensLeft += pt.tokenUpdateStep
+			// }
+
+			pt.lastUpdateTime = time.Now()
+			pt.unblockRateLimiter()
+
+			// Adjust the tick duration based on the exponential distribution
+			ticker.Reset(pt.nextTokenUpdateInterval(lambda))
+		}
+	} else {
+		for range time.Tick(tokenUpdateRate) {
+			// add tokens to the client deterministically or randomly, depending on the tokenRefillDist
+			if tokenRefillDist == "fixed" {
+				pt.tokensLeft += tokenUpdateStep
+			} else if tokenRefillDist == "uniform" {
+				pt.tokensLeft += rand.Int63n(tokenUpdateStep)
+			}
+
+			pt.lastUpdateTime = time.Now()
+			pt.unblockRateLimiter()
+			// ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
+			// pt.logger(ctx, "[TokenRefill]: Tokens refilled. Tokens left: %d\n", pt.tokensLeft)
+		}
 	}
+}
+
+// initialTokenUpdateInterval returns the initial tick duration for the tokenRefill.
+func (pt *PriceTable) initialTokenUpdateInterval() time.Duration {
+	// Return the desired initial tick duration
+	return pt.tokenUpdateRate
+}
+
+// nextTokenUpdateInterval returns the next tick duration for the tokenRefill based on the exponential distribution.
+func (pt *PriceTable) nextTokenUpdateInterval(lambda float64) time.Duration {
+	// Calculate the next tick duration based on the exponential distribution
+	// For example, you can use a lambda value of 0.5 for the exponential distribution
+	// lambda := 0.5
+	nextTickDuration := time.Duration(rand.ExpFloat64()/lambda) * time.Millisecond
+
+	// Return the next tick duration
+	return time.Duration(nextTickDuration)
 }
