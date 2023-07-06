@@ -64,6 +64,7 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 		tokensLeft:          10,
 		tokenUpdateRate:     time.Millisecond * 10,
 		lastUpdateTime:      time.Now(),
+		lastRateLimitedTime: time.Now().Add(-time.Second),
 		tokenUpdateStep:     1,
 		tokenRefillDist:     "fixed",
 		tokenStrategy:       "all",
@@ -71,6 +72,7 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 		priceUpdateRate:     time.Millisecond * 10,
 		observedDelay:       time.Duration(0),
 		clientTimeOut:       time.Duration(0),
+		clientBackoff:       time.Duration(0),
 		throughputThreshold: 0,
 		latencyThreshold:    time.Duration(0),
 		priceStep:           1,
@@ -164,6 +166,11 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 	if clientTimeOut, ok := options["clientTimeOut"].(time.Duration); ok {
 		priceTable.clientTimeOut = clientTimeOut
 		priceTable.logger(ctx, "clientTimeout		of %s set to %v\n", nodeName, clientTimeOut)
+	}
+
+	if clientBackoff, ok := options["clientBackoff"].(time.Duration); ok {
+		priceTable.clientBackoff = clientBackoff
+		priceTable.logger(ctx, "clientBackoff		of %s set to %v\n", nodeName, clientBackoff)
 	}
 
 	// priceTable.rateLimitWaiting = true if and only if the clientTimeOut is set to be greater than 0 duration

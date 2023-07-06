@@ -43,6 +43,7 @@ type PriceTable struct {
 	tokensLeft          int64
 	tokenUpdateRate     time.Duration
 	lastUpdateTime      time.Time
+	lastRateLimitedTime time.Time
 	tokenUpdateStep     int64
 	tokenRefillDist     string
 	tokenStrategy       string
@@ -50,6 +51,7 @@ type PriceTable struct {
 	priceUpdateRate     time.Duration
 	observedDelay       time.Duration
 	clientTimeOut       time.Duration
+	clientBackoff       time.Duration
 	throughputThreshold int64
 	latencyThreshold    time.Duration
 	priceStep           int64
@@ -161,6 +163,20 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 		pt.logger(ctx, "[Sending Req Enduser]:	The metadata for request is %s: %s\n", k, v)
 	}
 
+	// Check the time duration since the last RateLimited error
+	if time.Since(pt.lastRateLimitedTime) < pt.clientBackoff {
+		if !pt.rateLimitWaiting {
+			pt.logger(ctx, "[Backoff Triggered]:	Client is rate limited, req dropped without waiting.")
+			// the request is dropped without waiting in this scenario, but we want to return an error to the client
+			// to do this, we use a fake invoker without actually sending the request to the server
+			// Invoke the gRPC method with the new callOptions: MaxCallSendMsgSize as 0
+			// append to opts
+			opts = append(opts, grpc.MaxCallSendMsgSize(0))
+			_ = invoker(ctx, method, req, reply, cc, opts...)
+			return status.Error(codes.ResourceExhausted, "Client is rate limited, req dropped without waiting.")
+		}
+	}
+
 	var tok int64
 	// Set a timer for the client to timeout if it has been waiting for too long.
 	startTime := time.Now()
@@ -187,6 +203,11 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 			break
 		}
 		ratelimit := pt.RateLimiting(ctx, tok, "echo")
+		if ratelimit == RateLimited && time.Since(pt.lastRateLimitedTime) > pt.clientBackoff {
+			pt.logger(ctx, "[Backoff Started]:	Client has been rate limited, backoff started.\n")
+			pt.lastRateLimitedTime = time.Now()
+		}
+
 		if ratelimit == RateLimited {
 			if !pt.rateLimitWaiting {
 				pt.logger(ctx, "[Rate Limited]:	Client is rate limited, req dropped without waiting.\n")
