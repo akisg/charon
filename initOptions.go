@@ -217,6 +217,7 @@ func (pt *PriceTable) tokenRefill(tokenRefillDist string, tokenUpdateStep int64,
 	if tokenRefillDist == "poisson" {
 		// Create a ticker with an initial tick duration
 		ticker := time.NewTicker(pt.initialTokenUpdateInterval())
+		defer ticker.Stop()
 		// lambda is 1 over pt.tokenUpdateRate.Milliseconds(), but make lambda a float64
 		lambda := float64(1) / float64(pt.tokenUpdateRate.Milliseconds())
 
@@ -261,8 +262,13 @@ func (pt *PriceTable) nextTokenUpdateInterval(lambda float64) time.Duration {
 	// For example, you can use a lambda value of 0.5 for the exponential distribution
 	// lambda := 0.5
 	nextTickDuration := time.Duration(rand.ExpFloat64()/lambda) * time.Millisecond
-	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
-	pt.logger(ctx, "[TokenRefill]: Next tick duration: %v\n", nextTickDuration)
+	// ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
+	// pt.logger(ctx, "[TokenRefill]: Next tick duration: %v\n", nextTickDuration)
+
+	if nextTickDuration <= 0 {
+		// Handle the case when nextTickDuration is non-positive
+		nextTickDuration = time.Millisecond // Set a default positive duration
+	}
 	// Return the next tick duration
 	return time.Duration(nextTickDuration)
 }
