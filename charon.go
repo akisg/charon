@@ -52,6 +52,7 @@ type PriceTable struct {
 	observedDelay       time.Duration
 	clientTimeOut       time.Duration
 	clientBackoff       time.Duration
+	randomRateLimit     int64
 	throughputThreshold int64
 	latencyThreshold    time.Duration
 	priceStep           int64
@@ -161,6 +162,27 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 	// pt.logger(ctx, "[Received Req]:	The sender's name for request is %s\n", md["name"])
 	for k, v := range md {
 		pt.logger(ctx, "[Sending Req Enduser]:	The metadata for request is %s: %s\n", k, v)
+	}
+
+	// if `randomRateLimit` is greater than 0, then we randomly drop requests based on the last digit of `request-id` in md
+	if pt.randomRateLimit > 0 {
+		// get the request-id from the metadata
+		if requestIDs, found := md["request-id"]; found && len(requestIDs) > 0 {
+			reqid, err := strconv.ParseInt(requestIDs[0], 10, 64)
+			if err != nil {
+				// Error parsing request ID, handle accordingly
+				panic(err)
+			}
+			// take the last digit of the requestIDs
+			lastDigit := reqid % 10
+			// if the last digit is smaller than the randomRateLimit, then drop the request
+			if lastDigit < pt.randomRateLimit {
+				pt.logger(ctx, "[Random Drop]:	The request is dropped randomly.")
+				opts = append(opts, grpc.MaxCallSendMsgSize(0))
+				_ = invoker(ctx, method, req, reply, cc, opts...)
+				return status.Error(codes.ResourceExhausted, "Client is rate limited, req dropped randomly.")
+			}
+		}
 	}
 
 	// Check the time duration since the last RateLimited error

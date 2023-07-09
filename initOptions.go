@@ -73,6 +73,7 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 		observedDelay:       time.Duration(0),
 		clientTimeOut:       time.Duration(0),
 		clientBackoff:       time.Duration(0),
+		randomRateLimit:     -1,
 		throughputThreshold: 0,
 		latencyThreshold:    time.Duration(0),
 		priceStep:           1,
@@ -171,6 +172,11 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 	if clientBackoff, ok := options["clientBackoff"].(time.Duration); ok {
 		priceTable.clientBackoff = clientBackoff
 		priceTable.logger(ctx, "clientBackoff		of %s set to %v\n", nodeName, clientBackoff)
+	}
+
+	if randomRateLimit, ok := options["randomRateLimit"].(int64); ok {
+		priceTable.randomRateLimit = randomRateLimit
+		priceTable.logger(ctx, "randomRateLimit		of %s set to %v\n", nodeName, randomRateLimit)
 	}
 
 	// priceTable.rateLimitWaiting = true if and only if the clientTimeOut is set to be greater than 0 duration
