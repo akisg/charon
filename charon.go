@@ -39,6 +39,7 @@ type PriceTable struct {
 	pinpointLatency    bool
 	pinpointQueuing    bool
 	rateLimiter        chan int64
+	invokeAfterRL      bool
 	// updateRate is the rate at which price should be updated at least once.
 	tokensLeft          int64
 	tokenUpdateRate     time.Duration
@@ -178,8 +179,10 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 			// if the last digit is smaller than the randomRateLimit, then drop the request
 			if lastDigit < pt.randomRateLimit {
 				pt.logger(ctx, "[Random Drop]:	The request is dropped randomly.")
-				opts = append(opts, grpc.MaxCallSendMsgSize(0))
-				_ = invoker(ctx, method, req, reply, cc, opts...)
+				if pt.invokeAfterRL {
+					opts = append(opts, grpc.MaxCallSendMsgSize(0))
+					_ = invoker(ctx, method, req, reply, cc, opts...)
+				}
 				return status.Error(codes.ResourceExhausted, "Client is rate limited, req dropped randomly.")
 			}
 		}
@@ -193,8 +196,10 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 			// to do this, we use a fake invoker without actually sending the request to the server
 			// Invoke the gRPC method with the new callOptions: MaxCallSendMsgSize as 0
 			// append to opts
-			opts = append(opts, grpc.MaxCallSendMsgSize(0))
-			_ = invoker(ctx, method, req, reply, cc, opts...)
+			if pt.invokeAfterRL {
+				opts = append(opts, grpc.MaxCallSendMsgSize(0))
+				_ = invoker(ctx, method, req, reply, cc, opts...)
+			}
 			return status.Error(codes.ResourceExhausted, "Client is rate limited, req dropped without waiting.")
 		}
 	}
@@ -209,8 +214,10 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 			pt.logger(ctx, "[Client Timeout]:	Client timeout waiting for tokens.\n")
 			// Invoke the gRPC method with the new callOptions: MaxCallSendMsgSize as 0
 			// append to opts
-			opts = append(opts, grpc.MaxCallSendMsgSize(0))
-			_ = invoker(ctx, method, req, reply, cc, opts...)
+			if pt.invokeAfterRL {
+				opts = append(opts, grpc.MaxCallSendMsgSize(0))
+				_ = invoker(ctx, method, req, reply, cc, opts...)
+			}
 			return status.Errorf(codes.DeadlineExceeded, "Client timeout waiting for tokens.")
 		}
 		// right now let's assume that client uses all the tokens on her next request.
@@ -237,8 +244,10 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 				// to do this, we use a fake invoker without actually sending the request to the server
 				// Invoke the gRPC method with the new callOptions: MaxCallSendMsgSize as 0
 				// append to opts
-				opts = append(opts, grpc.MaxCallSendMsgSize(0))
-				_ = invoker(ctx, method, req, reply, cc, opts...)
+				if pt.invokeAfterRL {
+					opts = append(opts, grpc.MaxCallSendMsgSize(0))
+					_ = invoker(ctx, method, req, reply, cc, opts...)
+				}
 				return status.Error(codes.ResourceExhausted, "Client is rate limited, req dropped without waiting.")
 			}
 			<-pt.rateLimiter

@@ -61,6 +61,7 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 		pinpointLatency:     false,
 		pinpointQueuing:     false,
 		rateLimiter:         make(chan int64, 1),
+		invokeAfterRL:       false,
 		tokensLeft:          10,
 		tokenUpdateRate:     time.Millisecond * 10,
 		lastUpdateTime:      time.Now(),
@@ -124,6 +125,11 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 	if pinpointQueuing, ok := options["pinpointQueuing"].(bool); ok {
 		priceTable.pinpointQueuing = pinpointQueuing
 		priceTable.logger(ctx, "pinpointQueuing		of %s set to %v\n", nodeName, pinpointQueuing)
+	}
+
+	if invokeAfterRL, ok := options["invokeAfterRL"].(bool); ok {
+		priceTable.invokeAfterRL = invokeAfterRL
+		priceTable.logger(ctx, "invokeAfterRL		of %s set to %v\n", nodeName, invokeAfterRL)
 	}
 
 	if tokensLeft, ok := options["tokensLeft"].(int64); ok {
