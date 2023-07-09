@@ -174,8 +174,8 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 				// Error parsing request ID, handle accordingly
 				panic(err)
 			}
-			// take the last digit of the requestIDs
-			lastDigit := reqid % 10
+			// take the last two digits of the requestIDs
+			lastDigit := reqid % 100
 			// if the last digit is smaller than the randomRateLimit, then drop the request
 			if lastDigit < pt.randomRateLimit {
 				pt.logger(ctx, "[Random Drop]:	The request is dropped randomly.")
