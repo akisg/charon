@@ -258,7 +258,7 @@ func (pt *PriceTable) tokenRefill(tokenRefillDist string, tokenUpdateStep int64,
 			if tokenRefillDist == "fixed" {
 				pt.tokensLeft += tokenUpdateStep
 			} else if tokenRefillDist == "uniform" {
-				pt.tokensLeft += rand.Int63n(tokenUpdateStep)
+				pt.tokensLeft += rand.Int63n(tokenUpdateStep * 2)
 			}
 
 			pt.lastUpdateTime = time.Now()
