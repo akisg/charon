@@ -73,6 +73,46 @@ func (pt *PriceTable) UpdateOwnPrice(ctx context.Context, congestion bool) error
 	return nil
 }
 
+func (pt *PriceTable) calculatePriceAdjustment(diff int64) int64 {
+	if diff > 0 {
+		// Use a non-linear adjustment: larger adjustment for larger differences
+		adjustment := int64(diff / 100)
+		if adjustment > pt.priceStep {
+			return pt.priceStep
+		}
+		return adjustment
+	} else if diff < -1000 {
+		return -1
+	} else {
+		return 0
+	}
+}
+
+// UpdatePricebyQueueDelay incorperates the queue delay to its own price steps. Thus, the price step is not linear.
+func (pt *PriceTable) UpdatePricebyQueueDelay(ctx context.Context) error {
+	ownPrice_string, _ := pt.priceTableMap.LoadOrStore("ownprice", pt.initprice)
+	ownPrice := ownPrice_string.(int64)
+
+	// read the gapLatency from context ctx
+	gapLatency := ctx.Value("gapLatency").(float64)
+	// Calculate the priceStep as a fraction of the difference between gapLatency and latencyThreshold
+
+	diff := int64(gapLatency*1000) - pt.latencyThreshold.Microseconds()
+	adjustment := pt.calculatePriceAdjustment(diff)
+
+	pt.logger(ctx, "[Update Price by Queue Delay]: own price %d, step %d\n", ownPrice, adjustment)
+
+	ownPrice += adjustment
+	if ownPrice <= 0 {
+		ownPrice = 0
+	}
+
+	pt.priceTableMap.Store("ownprice", ownPrice)
+	pt.logger(ctx, "[Update Price by Queue Delay]: Own price updated to %d\n", ownPrice)
+
+	return nil
+}
+
 // UpdateDownstreamPrice incorperates the downstream price table to its own price table.
 func (pt *PriceTable) UpdateDownstreamPrice(ctx context.Context, method string, downstreamPrice int64) (int64, error) {
 

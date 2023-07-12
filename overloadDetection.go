@@ -69,7 +69,12 @@ func (pt *PriceTable) queuingCheck() {
 		// store the gapLatency in the context ctx
 		ctx = context.WithValue(ctx, "gapLatency", gapLatency)
 
-		pt.UpdateOwnPrice(ctx, pt.overloadDetection(ctx))
+		if pt.priceStrategy == "step" {
+			pt.UpdateOwnPrice(ctx, pt.overloadDetection(ctx))
+		} else if pt.priceStrategy == "propotional" {
+			pt.UpdatePricebyQueueDelay(ctx)
+		} else if pt.priceStrategy == "exponential" {
+		}
 		// copy the content of current histogram to the previous histogram
 		prevHist = currHist
 	}

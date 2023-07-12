@@ -69,6 +69,7 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 		tokenUpdateStep:     1,
 		tokenRefillDist:     "fixed",
 		tokenStrategy:       "all",
+		priceStrategy:       "step",
 		throughputCounter:   0,
 		priceUpdateRate:     time.Millisecond * 10,
 		observedDelay:       time.Duration(0),
@@ -163,6 +164,15 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 		}
 		priceTable.tokenStrategy = tokenStrategy
 		priceTable.logger(ctx, "tokenStrategy		of %s set to %v\n", nodeName, tokenStrategy)
+	}
+
+	if priceStrategy, ok := options["priceStrategy"].(string); ok {
+		// if the priceStrategy is not "step" or "proportional", then set it to be "step"
+		if priceStrategy != "step" && priceStrategy != "proportional" {
+			priceStrategy = "step"
+		}
+		priceTable.priceStrategy = priceStrategy
+		priceTable.logger(ctx, "priceStrategy		of %s set to %v\n", nodeName, priceStrategy)
 	}
 
 	if priceUpdateRate, ok := options["priceUpdateRate"].(time.Duration); ok {

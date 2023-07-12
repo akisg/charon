@@ -48,6 +48,7 @@ type PriceTable struct {
 	tokenUpdateStep     int64
 	tokenRefillDist     string
 	tokenStrategy       string
+	priceStrategy       string
 	throughputCounter   int64
 	priceUpdateRate     time.Duration
 	observedDelay       time.Duration
