@@ -71,7 +71,7 @@ func (pt *PriceTable) queuingCheck() {
 
 		if pt.priceStrategy == "step" {
 			pt.UpdateOwnPrice(ctx, pt.overloadDetection(ctx))
-		} else if pt.priceStrategy == "propotional" {
+		} else if pt.priceStrategy == "proportional" {
 			pt.UpdatePricebyQueueDelay(ctx)
 		} else if pt.priceStrategy == "exponential" {
 		}
