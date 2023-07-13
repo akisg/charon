@@ -2,6 +2,7 @@ package charon
 
 import (
 	"context"
+	"math"
 	"strconv"
 )
 
@@ -103,8 +104,11 @@ func (pt *PriceTable) UpdatePricebyQueueDelay(ctx context.Context) error {
 	pt.logger(ctx, "[Update Price by Queue Delay]: own price %d, step %d\n", ownPrice, adjustment)
 
 	ownPrice += adjustment
-	if ownPrice <= 0 {
-		ownPrice = 0
+	// Set reservePrice to the larger of pt.guidePrice and 0
+	reservePrice := int64(math.Max(float64(pt.guidePrice), 0))
+
+	if ownPrice <= reservePrice {
+		ownPrice = reservePrice
 	}
 
 	pt.priceTableMap.Store("ownprice", ownPrice)
