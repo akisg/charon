@@ -40,7 +40,7 @@ func (pt *PriceTable) queuingCheck() {
 	for range time.Tick(pt.priceUpdateRate) {
 		// get the current histogram
 		currHist := readHistogram()
-
+		/*
 		// calculate the differernce between the two histograms prevHist and currHist
 		diff := metrics.Float64Histogram{}
 		// if preHist is empty pointer, return currHist
@@ -51,21 +51,27 @@ func (pt *PriceTable) queuingCheck() {
 		}
 		// maxLatency is the max of the histogram in milliseconds.
 		gapLatency := maximumBucket(&diff)
+		*/
+		if prevHist == nil {
+			continue
+		}
+		gapLatency := maximumQueuingDelayms(*prevHist, *currHist))
 		// medianLatency := medianBucket(&diff)
 		// gapLatency := percentileBucket(&diff, 90)
 
 		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
 
 		// ToDo: move the print of the histogram to a file
-
-		cumulativeLat := medianBucket(currHist)
-		// printHistogram(currHist)
-		pt.logger(ctx, "[Cumulative Waiting Time Median]:	%f ms.\n", cumulativeLat)
-		// printHistogram(&diff)
-		pt.logger(ctx, "[Incremental Waiting Time 90-tile]:	%f ms.\n", percentileBucket(&diff, 90))
-		pt.logger(ctx, "[Incremental Waiting Time Median]:	%f ms.\n", medianBucket(&diff))
-		pt.logger(ctx, "[Incremental Waiting Time Maximum]:	%f ms.\n", maximumBucket(&diff))
-
+		/*
+			cumulativeLat := medianBucket(currHist)
+			// printHistogram(currHist)
+			pt.logger(ctx, "[Cumulative Waiting Time Median]:	%f ms.\n", cumulativeLat)
+			// printHistogram(&diff)
+			pt.logger(ctx, "[Incremental Waiting Time 90-tile]:	%f ms.\n", percentileBucket(&diff, 90))
+			pt.logger(ctx, "[Incremental Waiting Time Median]:	%f ms.\n", medianBucket(&diff))
+			pt.logger(ctx, "[Incremental Waiting Time Maximum]:	%f ms.\n", maximumBucket(&diff))
+		*/
+		pt.logger(ctx, "[Incremental Waiting Time Maximum]:	%f ms.\n", gapLatency)
 		// store the gapLatency in the context ctx
 		ctx = context.WithValue(ctx, "gapLatency", gapLatency)
 

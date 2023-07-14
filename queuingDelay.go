@@ -95,6 +95,17 @@ func GetHistogramDifference(earlier, later metrics.Float64Histogram) metrics.Flo
 	return diff
 }
 
+// we should be able to avoid the GetHistogramDifference function by using the following function
+// Find the maximum bucket between two Float64Histogram distributions
+func maximumQueuingDelayms(earlier, later *metrics.Float64Histogram) float64 {
+	for i := len(earlier.Counts) - 1; i >= 0; i-- {
+		if later.Counts[i] > earlier.Counts[i] {
+			return later.Buckets[i] * 1000
+		}
+	}
+	return 0
+}
+
 func busyLoop(c chan<- int, quit chan bool) {
 	for {
 		if <-quit {
