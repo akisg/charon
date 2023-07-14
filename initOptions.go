@@ -168,9 +168,6 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 
 	if priceStrategy, ok := options["priceStrategy"].(string); ok {
 		// if the priceStrategy is not "step" or "proportional", then set it to be "step"
-		if priceStrategy != "step" && priceStrategy != "proportional" {
-			priceStrategy = "step"
-		}
 		priceTable.priceStrategy = priceStrategy
 		priceTable.logger(ctx, "priceStrategy		of %s set to %v\n", nodeName, priceStrategy)
 	}

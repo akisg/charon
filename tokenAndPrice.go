@@ -67,7 +67,7 @@ func (pt *PriceTable) UpdateOwnPrice(ctx context.Context, congestion bool) error
 			ownPrice = pt.guidePrice
 		}
 	} else if ownPrice > 0 {
-		ownPrice -= pt.priceStep
+		ownPrice -= 1
 	}
 	pt.priceTableMap.Store("ownprice", ownPrice)
 	pt.logger(ctx, "[Update OwnPrice]:	Own price updated to %d\n", ownPrice)
