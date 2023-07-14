@@ -77,7 +77,7 @@ func (pt *PriceTable) UpdateOwnPrice(ctx context.Context, congestion bool) error
 func (pt *PriceTable) calculatePriceAdjustment(diff int64) int64 {
 	if diff > 0 {
 		// Use a non-linear adjustment: larger adjustment for larger differences
-		adjustment := int64(diff * pt.priceStep / 1000)
+		adjustment := int64(diff * pt.priceStep / 10000)
 		// if adjustment > pt.priceStep {
 		// 	return pt.priceStep
 		// }
@@ -128,11 +128,12 @@ func (pt *PriceTable) UpdatePricebyQueueDelayExp(ctx context.Context) error {
 
 	diff := int64(gapLatency*1000) - pt.latencyThreshold.Microseconds()
 	// adjustment is exponential function of diff/1000
-	adjustment := int64(math.Exp(float64(diff*pt.priceStep/1000)) - 1)
+	adjustment := int64(math.Exp(float64(diff*pt.priceStep/10000)) - 1)
 
 	pt.logger(ctx, "[Update Price by Queue Delay]: own price %d, step %d\n", ownPrice, adjustment)
 
 	ownPrice += adjustment
+
 	// Set reservePrice to the larger of pt.guidePrice and 0
 	reservePrice := int64(math.Max(float64(pt.guidePrice), 0))
 
@@ -159,7 +160,7 @@ func (pt *PriceTable) UpdatePricebyQueueDelayLog(ctx context.Context) error {
 	// adjustment is a logarithmic function of diff*priceStep/1000 if diff > 0
 	adjustment := int64(0)
 	if diff > 0 {
-		adjustment = int64(math.Log(float64(diff*pt.priceStep/1000) + 1))
+		adjustment = int64(math.Log(float64(diff*pt.priceStep/10000) + 1))
 	} else if diff < -1000 {
 		adjustment = -1
 	}
