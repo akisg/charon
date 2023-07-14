@@ -53,6 +53,8 @@ func (pt *PriceTable) queuingCheck() {
 			gapLatency := maximumBucket(&diff)
 		*/
 		if prevHist == nil {
+			// directly go to next iteration
+			prevHist = currHist
 			continue
 		}
 		gapLatency := maximumQueuingDelayms(prevHist, currHist)
