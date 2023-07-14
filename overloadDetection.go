@@ -41,21 +41,21 @@ func (pt *PriceTable) queuingCheck() {
 		// get the current histogram
 		currHist := readHistogram()
 		/*
-		// calculate the differernce between the two histograms prevHist and currHist
-		diff := metrics.Float64Histogram{}
-		// if preHist is empty pointer, return currHist
-		if prevHist == nil {
-			diff = *currHist
-		} else {
-			diff = GetHistogramDifference(*prevHist, *currHist)
-		}
-		// maxLatency is the max of the histogram in milliseconds.
-		gapLatency := maximumBucket(&diff)
+			// calculate the differernce between the two histograms prevHist and currHist
+			diff := metrics.Float64Histogram{}
+			// if preHist is empty pointer, return currHist
+			if prevHist == nil {
+				diff = *currHist
+			} else {
+				diff = GetHistogramDifference(*prevHist, *currHist)
+			}
+			// maxLatency is the max of the histogram in milliseconds.
+			gapLatency := maximumBucket(&diff)
 		*/
 		if prevHist == nil {
 			continue
 		}
-		gapLatency := maximumQueuingDelayms(*prevHist, *currHist))
+		gapLatency := maximumQueuingDelayms(prevHist, currHist)
 		// medianLatency := medianBucket(&diff)
 		// gapLatency := percentileBucket(&diff, 90)
 
@@ -80,6 +80,7 @@ func (pt *PriceTable) queuingCheck() {
 		} else if pt.priceStrategy == "proportional" {
 			pt.UpdatePricebyQueueDelay(ctx)
 		} else if pt.priceStrategy == "exponential" {
+			pt.UpdatePricebyQueueDelayExp(ctx)
 		}
 		// copy the content of current histogram to the previous histogram
 		prevHist = currHist
