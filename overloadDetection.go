@@ -91,7 +91,7 @@ func (pt *PriceTable) queuingCheck() {
 		// copy the content of current histogram to the previous histogram
 		prevHist = currHist
 		// log the time elapsed for the query
-		pt.logger(ctx, "[Query Latency]:	%f ms.\n", time.Since(start).Milliseconds())
+		pt.logger(ctx, "[Query Latency]:	Overhead is %.2f milliseconds\n", float64(time.Since(start).Microseconds())/1000)
 	}
 }
 
