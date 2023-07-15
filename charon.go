@@ -268,7 +268,7 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 	ctx = metadata.AppendToOutgoingContext(ctx, "tokens", tok_string, "name", pt.nodeName)
 
 	// check the timer and log the overhead of intercepting
-	pt.logger(ctx, "[Enduser Interceptor Overhead]:	%.3d ms\n", time.Since(interceptorStartTime).Milliseconds())
+	pt.logger(ctx, "[Enduser Interceptor Overhead]:	 %.2f milliseconds\n", float64(time.Since(interceptorStartTime).Microseconds())/1000)
 
 	var header metadata.MD // variable to store header and trailer
 	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
@@ -369,6 +369,10 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	// 	pt.observedDelay += queuingDelay
 	// }
 
+	totalLatency := time.Since(startTime)
+	// log the total latency in unit of millisecond, decimal precision 2
+	pt.logger(ctx, "[Server-side Interceptor] Overhead is: %.2f milliseconds\n", float64(totalLatency.Microseconds())/1000)
+
 	m, err := handler(ctx, req)
 
 	// Attach the price info to response before sending
@@ -379,9 +383,6 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	header := metadata.Pairs("price", price_string, "name", pt.nodeName)
 	pt.logger(ctx, "[Preparing Resp]:	Total price is %s\n", price_string)
 	grpc.SendHeader(ctx, header)
-
-	totalLatency := time.Since(startTime)
-	pt.logger(ctx, "[Server-side Interceptor] Overhead is: %.3d milliseconds\n", totalLatency.Milliseconds())
 
 	if pt.pinpointLatency {
 		// if totalLatency > pt.observedDelay {
