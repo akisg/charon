@@ -128,7 +128,7 @@ func (pt *PriceTable) UpdatePricebyQueueDelayExp(ctx context.Context) error {
 
 	diff := int64(gapLatency*1000) - pt.latencyThreshold.Microseconds()
 	// adjustment is exponential function of diff/1000
-	adjustment := int64(math.Exp(float64(diff*pt.priceStep/10000)) - 1)
+	adjustment := int64(math.Exp(float64(diff*pt.priceStep/10000))) - 1
 
 	pt.logger(ctx, "[Update Price by Queue Delay]: own price %d, step %d\n", ownPrice, adjustment)
 

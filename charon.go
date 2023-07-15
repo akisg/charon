@@ -153,6 +153,8 @@ func (pt *PriceTable) UnaryInterceptorClient(ctx context.Context, method string,
 // unaryInterceptor is an example unary interceptor.
 func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 
+	// timer the intereceptor overhead
+	interceptorStartTime := time.Now()
 	// pt.logger(ctx, "[Before Req]:	The method name for price table is ")
 	// pt.logger(ctx, method)
 	md, ok := metadata.FromOutgoingContext(ctx)
@@ -265,6 +267,9 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 	tok_string := strconv.FormatInt(tok, 10)
 	ctx = metadata.AppendToOutgoingContext(ctx, "tokens", tok_string, "name", pt.nodeName)
 
+	// check the timer and log the overhead of intercepting
+	pt.logger(ctx, "[Enduser Interceptor Overhead]:	%.3d ms\n", time.Since(interceptorStartTime).Milliseconds())
+
 	var header metadata.MD // variable to store header and trailer
 	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
 
@@ -376,7 +381,7 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	grpc.SendHeader(ctx, header)
 
 	totalLatency := time.Since(startTime)
-	pt.logger(ctx, "[Server-side Timer] Processing Duration is: %.2d milliseconds\n", totalLatency.Milliseconds())
+	pt.logger(ctx, "[Server-side Interceptor] Overhead is: %.3d milliseconds\n", totalLatency.Milliseconds())
 
 	if pt.pinpointLatency {
 		// if totalLatency > pt.observedDelay {

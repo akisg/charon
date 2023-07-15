@@ -38,6 +38,8 @@ func (pt *PriceTable) queuingCheck() {
 	// init a null histogram
 	var prevHist *metrics.Float64Histogram
 	for range time.Tick(pt.priceUpdateRate) {
+		// start a timer to measure the query latency
+		start := time.Now()
 		// get the current histogram
 		currHist := readHistogram()
 		/*
@@ -88,6 +90,8 @@ func (pt *PriceTable) queuingCheck() {
 		}
 		// copy the content of current histogram to the previous histogram
 		prevHist = currHist
+		// log the time elapsed for the query
+		pt.logger(ctx, "[Query Latency]:	%f ms.\n", time.Since(start).Milliseconds())
 	}
 }
 
