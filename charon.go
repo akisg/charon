@@ -97,11 +97,8 @@ func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName
 	ownPrice := ownPrice_string.(int64)
 	downstreamPrice, _ := pt.RetrieveDSPrice(ctx, methodName)
 	totalPrice := ownPrice + downstreamPrice
-	// downstreamName, _ := t.cmap.Load("echo")
-	// downstreamPrice_string, _ := t.ptmap.LoadOrStore(downstreamName, int64(0))
-	// downstreamPrice := downstreamPrice_string.(int64)
-	// totalPrice_string, _ := t.ptmap.LoadOrStore("totalprice", t.initprice)
-	// totalPrice := totalPrice_string.(int64)
+	// totalPrice, _ := pt.RetrieveTotalPrice(ctx, methodName)
+
 	extratoken := tokens - totalPrice
 
 	pt.logger(ctx, "[Received Req]:	Total price is %d, ownPrice is %d downstream price is %d\n", totalPrice, ownPrice, downstreamPrice)
@@ -141,7 +138,7 @@ func (pt *PriceTable) UnaryInterceptorClient(ctx context.Context, method string,
 	// Jiali: after replied. update and store the price info for future
 	if len(header["price"]) > 0 {
 		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
-		pt.UpdateDownstreamPrice(ctx, header["name"][0], priceDownstream)
+		pt.UpdateDownstreamPrice(ctx, "echo", header["name"][0], priceDownstream)
 		pt.logger(ctx, "[After Resp]:	The price table is from %s\n", header["name"])
 	} else {
 		pt.logger(ctx, "[After Resp]:	No price table received\n")
@@ -155,8 +152,7 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 
 	// timer the intereceptor overhead
 	interceptorStartTime := time.Now()
-	// pt.logger(ctx, "[Before Req]:	The method name for price table is ")
-	// pt.logger(ctx, method)
+	pt.logger(ctx, "[Before Req]:	Node %s calling %s\n", pt.nodeName, method)
 	md, ok := metadata.FromOutgoingContext(ctx)
 	if !ok {
 		return errMissingMetadata
@@ -276,7 +272,7 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 	// Jiali: after replied. update and store the price info for future
 	if len(header["price"]) > 0 {
 		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
-		pt.UpdateDownstreamPrice(ctx, header["name"][0], priceDownstream)
+		pt.UpdateDownstreamPrice(ctx, "echo", header["name"][0], priceDownstream)
 		pt.logger(ctx, "[After Resp]:	The price table is from %s\n", header["name"])
 	} else {
 		pt.logger(ctx, "[After Resp]:	No price table received\n")
@@ -311,15 +307,19 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	if val, ok := md["tokens-"+pt.nodeName]; ok {
 		pt.logger(ctx, "[Received Req]:	tokens for %s are %s\n", pt.nodeName, val)
 		// raise error if the val length is not 1
-		if len(val) != 1 {
+		if len(val) > 1 {
 			return nil, status.Errorf(codes.InvalidArgument, "duplicated tokens")
+		} else if len(val) == 0 {
+			return nil, errMissingMetadata
 		}
 		tok, err = strconv.ParseInt(val[0], 10, 64)
 	} else {
 		pt.logger(ctx, "[Received Req]:	tokens are %s\n", md["tokens"])
 		// raise error if the tokens length is not 1
-		if len(md["tokens"]) != 1 {
+		if len(md["tokens"]) > 1 {
 			return nil, status.Errorf(codes.InvalidArgument, "duplicated tokens")
+		} else if len(md["tokens"]) == 0 {
+			return nil, errMissingMetadata
 		}
 		tok, err = strconv.ParseInt(md["tokens"][0], 10, 64)
 	}

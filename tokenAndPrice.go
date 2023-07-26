@@ -23,7 +23,8 @@ func (pt *PriceTable) SplitTokens(ctx context.Context, tokenleft int64, methodNa
 	tokenleftPerDownstream := (tokenleft - downstreamPriceSum) / int64(size)
 	pt.logger(ctx, "[Split tokens]:	extra token left for each ds is %d\n", tokenleftPerDownstream)
 	for _, downstreamName := range downstreamNames {
-		downstreamPriceString, _ := pt.priceTableMap.LoadOrStore(downstreamName, int64(0))
+		// concatenate the method name with node name to distinguish different downstream services calls.
+		downstreamPriceString, _ := pt.priceTableMap.LoadOrStore(methodName+"-"+downstreamName, pt.initprice)
 		downstreamPrice := downstreamPriceString.(int64)
 		downstreamToken := tokenleftPerDownstream + downstreamPrice
 		downstreamTokens = append(downstreamTokens, "tokens-"+downstreamName, strconv.FormatInt(downstreamToken, 10))
@@ -37,11 +38,11 @@ func (pt *PriceTable) RetrieveDSPrice(ctx context.Context, methodName string) (i
 	downstreamNames, _ := pt.callMap[methodName]
 	var downstreamPriceSum int64
 	for _, downstreamName := range downstreamNames {
-		downstreamPriceString, _ := pt.priceTableMap.LoadOrStore(downstreamName, pt.initprice)
+		// concatenate the method name with node name to distinguish different downstream services calls.
+		downstreamPriceString, _ := pt.priceTableMap.LoadOrStore(methodName+"-"+downstreamName, pt.initprice)
 		downstreamPrice := downstreamPriceString.(int64)
 		downstreamPriceSum += downstreamPrice
 	}
-	// fmt.Println("Total Price:", downstreamPriceSum)
 	return downstreamPriceSum, nil
 }
 
@@ -182,16 +183,11 @@ func (pt *PriceTable) UpdatePricebyQueueDelayLog(ctx context.Context) error {
 }
 
 // UpdateDownstreamPrice incorperates the downstream price table to its own price table.
-func (pt *PriceTable) UpdateDownstreamPrice(ctx context.Context, method string, downstreamPrice int64) (int64, error) {
+func (pt *PriceTable) UpdateDownstreamPrice(ctx context.Context, method string, nodeName string, downstreamPrice int64) (int64, error) {
 
-	// Update the downstream price.
-	pt.priceTableMap.Store(method, downstreamPrice)
-	pt.logger(ctx, "[Received Resp]:	Downstream price of %s updated to %d\n", method, downstreamPrice)
+	// Update the downstream price, but concatenate the method name with node name to distinguish different downstream services calls.
+	pt.priceTableMap.Store(method+"-"+nodeName, downstreamPrice)
+	pt.logger(ctx, "[Received Resp]:	Downstream price of %s updated to %d\n", method+"-"+nodeName, downstreamPrice)
 
-	// var totalPrice int64
-	// ownPrice, _ := t.ptmap.LoadOrStore("ownprice", t.initprice)
-	// totalPrice = ownPrice.(int64) + downstreamPrice
-	// t.ptmap.Store("totalprice", totalPrice)
-	// pt.logger(ctx, "[Received Resp]:	Total price updated to %d\n", totalPrice)
 	return downstreamPrice, nil
 }
