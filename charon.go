@@ -135,14 +135,17 @@ func (pt *PriceTable) UnaryInterceptorClient(ctx context.Context, method string,
 	var header metadata.MD // variable to store header and trailer
 	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
 
-	// Jiali: after replied. update and store the price info for future
-	if len(header["price"]) > 0 {
-		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
-		pt.UpdateDownstreamPrice(ctx, "echo", header["name"][0], priceDownstream)
-		pt.logger(ctx, "[After Resp]:	The price table is from %s\n", header["name"])
-	} else {
-		pt.logger(ctx, "[After Resp]:	No price table received\n")
-	}
+	// run the following code asynchorously, without blocking the main thread.
+	go func() {
+		// Jiali: after replied. update and store the price info for future
+		if len(header["price"]) > 0 {
+			priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
+			pt.UpdateDownstreamPrice(ctx, "echo", header["name"][0], priceDownstream)
+			pt.logger(ctx, "[After Resp]:	The price table is from %s\n", header["name"])
+		} else {
+			pt.logger(ctx, "[After Resp]:	No price table received\n")
+		}
+	}()
 
 	return err
 }
@@ -231,9 +234,12 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 			break
 		}
 		ratelimit := pt.RateLimiting(ctx, tok, "echo")
-		if ratelimit == RateLimited && time.Since(pt.lastRateLimitedTime) > pt.clientBackoff {
-			pt.logger(ctx, "[Backoff Started]:	Client has been rate limited, backoff started.\n")
-			pt.lastRateLimitedTime = time.Now()
+		// if clientBackoff is greater than 0, update the lastRateLimitedTime
+		if pt.clientBackoff > 0 {
+			if ratelimit == RateLimited && time.Since(pt.lastRateLimitedTime) > pt.clientBackoff {
+				pt.logger(ctx, "[Backoff Started]:	Client has been rate limited, backoff started.\n")
+				pt.lastRateLimitedTime = time.Now()
+			}
 		}
 
 		if ratelimit == RateLimited {
@@ -269,14 +275,17 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 	var header metadata.MD // variable to store header and trailer
 	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
 
-	// Jiali: after replied. update and store the price info for future
-	if len(header["price"]) > 0 {
-		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
-		pt.UpdateDownstreamPrice(ctx, "echo", header["name"][0], priceDownstream)
-		pt.logger(ctx, "[After Resp]:	The price table is from %s\n", header["name"])
-	} else {
-		pt.logger(ctx, "[After Resp]:	No price table received\n")
-	}
+	// run the following code asynchorously, without blocking the main thread.
+	go func() {
+		// Jiali: after replied. update and store the price info for future
+		if len(header["price"]) > 0 {
+			priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
+			pt.UpdateDownstreamPrice(ctx, "echo", header["name"][0], priceDownstream)
+			pt.logger(ctx, "[After Resp]:	The price table is from %s\n", header["name"])
+		} else {
+			pt.logger(ctx, "[After Resp]:	No price table received\n")
+		}
+	}()
 	return err
 }
 

@@ -34,6 +34,14 @@ func (pt *PriceTable) SplitTokens(ctx context.Context, tokenleft int64, methodNa
 }
 
 func (pt *PriceTable) RetrieveDSPrice(ctx context.Context, methodName string) (int64, error) {
+	// load the downstream price from the price table with method name as key.
+	downstreamPriceSum_string, _ := pt.priceTableMap.LoadOrStore(methodName, pt.initprice)
+	downstreamPriceSum := downstreamPriceSum_string.(int64)
+	return downstreamPriceSum, nil
+}
+
+// SaveDSPrice saves the downstream price table to the price table. It loops through the downstreamNames and save the downstream price to the price table.
+func (pt *PriceTable) SaveDSPrice(ctx context.Context, methodName string) error {
 	// retrive downstream node name involved in the request from callmap.
 	downstreamNames, _ := pt.callMap[methodName]
 	var downstreamPriceSum int64
@@ -43,7 +51,9 @@ func (pt *PriceTable) RetrieveDSPrice(ctx context.Context, methodName string) (i
 		downstreamPrice := downstreamPriceString.(int64)
 		downstreamPriceSum += downstreamPrice
 	}
-	return downstreamPriceSum, nil
+	// save the downstream price to the price table with method name as key.
+	pt.priceTableMap.Store(methodName, downstreamPriceSum)
+	return nil
 }
 
 func (pt *PriceTable) RetrieveTotalPrice(ctx context.Context, methodName string) (string, error) {
@@ -188,6 +198,6 @@ func (pt *PriceTable) UpdateDownstreamPrice(ctx context.Context, method string, 
 	// Update the downstream price, but concatenate the method name with node name to distinguish different downstream services calls.
 	pt.priceTableMap.Store(method+"-"+nodeName, downstreamPrice)
 	pt.logger(ctx, "[Received Resp]:	Downstream price of %s updated to %d\n", method+"-"+nodeName, downstreamPrice)
-
+	pt.SaveDSPrice(ctx, method)
 	return downstreamPrice, nil
 }
