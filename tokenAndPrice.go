@@ -17,11 +17,11 @@ func (pt *PriceTable) SplitTokens(ctx context.Context, tokenleft int64, methodNa
 
 	downstreamTokens := []string{}
 	downstreamPriceSum, _ := pt.RetrieveDSPrice(ctx, methodName)
-	pt.logger(ctx, "[Split tokens]:	downstream total price is %d\n", downstreamPriceSum)
-
-	pt.logger(ctx, "[Split tokens]:	%d downstream services for %s \n", size, pt.nodeName)
 	tokenleftPerDownstream := (tokenleft - downstreamPriceSum) / int64(size)
-	pt.logger(ctx, "[Split tokens]:	extra token left for each ds is %d\n", tokenleftPerDownstream)
+
+	pt.logger(ctx, "[Split tokens]: downstream total price is %d, from %d downstream services for %s, extra token left for each ds is %d\n",
+		downstreamPriceSum, size, pt.nodeName, tokenleftPerDownstream)
+
 	for _, downstreamName := range downstreamNames {
 		// concatenate the method name with node name to distinguish different downstream services calls.
 		downstreamPriceString, _ := pt.priceTableMap.LoadOrStore(methodName+"-"+downstreamName, pt.initprice)

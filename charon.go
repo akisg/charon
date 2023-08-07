@@ -2,6 +2,7 @@ package charon
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"math/rand"
 	"time"
@@ -93,6 +94,10 @@ func (pt *PriceTable) RateLimiting(ctx context.Context, tokens int64, methodName
 // It returns #token left from ownprice, and a nil error if the request has sufficient amount of tokens.
 // It returns ErrLimitExhausted if the amount of available tokens is less than requested.
 func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName string) (int64, error) {
+	// if pt.loadShedding is false, then return tokens and nil error
+	if !pt.loadShedding {
+		return tokens, nil
+	}
 	ownPrice_string, _ := pt.priceTableMap.LoadOrStore("ownprice", pt.initprice)
 	ownPrice := ownPrice_string.(int64)
 	downstreamPrice, _ := pt.RetrieveDSPrice(ctx, methodName)
@@ -191,7 +196,7 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 	}
 
 	// Check the time duration since the last RateLimited error
-	if time.Since(pt.lastRateLimitedTime) < pt.clientBackoff {
+	if pt.clientBackoff > 0 && time.Since(pt.lastRateLimitedTime) < pt.clientBackoff {
 		if !pt.rateLimitWaiting {
 			pt.logger(ctx, "[Backoff Triggered]:	Client is rate limited, req dropped without waiting.")
 			// the request is dropped without waiting in this scenario, but we want to return an error to the client
@@ -304,9 +309,15 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	}
 
 	// print all the k-v pairs in the metadata md
-	// pt.logger(ctx, "[Received Req]:	The sender's name for request is %s\n", md["name"])
+	// for k, v := range md {
+	// 	pt.logger(ctx, "[Received Req]:	The metadata for request is %s: %s\n", k, v)
+	// }
+	var metadataLog string
 	for k, v := range md {
-		pt.logger(ctx, "[Received Req]:	The metadata for request is %s: %s\n", k, v)
+		metadataLog += fmt.Sprintf("%s: %s, ", k, v)
+	}
+	if metadataLog != "" {
+		pt.logger(ctx, "[Received Req]: The metadata for request is %s\n", metadataLog)
 	}
 
 	// Jiali: overload handler, do AQM, deduct the tokens on the request, update price info
