@@ -141,16 +141,16 @@ func (pt *PriceTable) UnaryInterceptorClient(ctx context.Context, method string,
 	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
 
 	// run the following code asynchorously, without blocking the main thread.
-	go func() {
-		// Jiali: after replied. update and store the price info for future
-		if len(header["price"]) > 0 {
-			priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
-			pt.UpdateDownstreamPrice(ctx, "echo", header["name"][0], priceDownstream)
-			pt.logger(ctx, "[After Resp]:	The price table is from %s\n", header["name"])
-		} else {
-			pt.logger(ctx, "[After Resp]:	No price table received\n")
-		}
-	}()
+	// go func() {
+	// Jiali: after replied. update and store the price info for future
+	if len(header["price"]) > 0 {
+		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
+		pt.UpdateDownstreamPrice(ctx, "echo", header["name"][0], priceDownstream)
+		pt.logger(ctx, "[After Resp]:	The price table is from %s\n", header["name"])
+	} else {
+		pt.logger(ctx, "[After Resp]:	No price table received\n")
+	}
+	// }()
 
 	return err
 }
@@ -168,8 +168,15 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 
 	// print all the k-v pairs in the metadata md
 	// pt.logger(ctx, "[Received Req]:	The sender's name for request is %s\n", md["name"])
+	// for k, v := range md {
+	// 	pt.logger(ctx, "[Sending Req Enduser]:	The metadata for request is %s: %s\n", k, v)
+	// }
+	var metadataLog string
 	for k, v := range md {
-		pt.logger(ctx, "[Sending Req Enduser]:	The metadata for request is %s: %s\n", k, v)
+		metadataLog += fmt.Sprintf("%s: %s, ", k, v)
+	}
+	if metadataLog != "" {
+		pt.logger(ctx, "[Sending Req Enduser]: The metadata for request is %s\n", metadataLog)
 	}
 
 	// if `randomRateLimit` is greater than 0, then we randomly drop requests based on the last digit of `request-id` in md
@@ -281,16 +288,16 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
 
 	// run the following code asynchorously, without blocking the main thread.
-	go func() {
-		// Jiali: after replied. update and store the price info for future
-		if len(header["price"]) > 0 {
-			priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
-			pt.UpdateDownstreamPrice(ctx, "echo", header["name"][0], priceDownstream)
-			pt.logger(ctx, "[After Resp]:	The price table is from %s\n", header["name"])
-		} else {
-			pt.logger(ctx, "[After Resp]:	No price table received\n")
-		}
-	}()
+	// go func() {
+	// Jiali: after replied. update and store the price info for future
+	if len(header["price"]) > 0 {
+		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
+		pt.UpdateDownstreamPrice(ctx, "echo", header["name"][0], priceDownstream)
+		pt.logger(ctx, "[After Resp]:	The price table is from %s\n", header["name"])
+	} else {
+		pt.logger(ctx, "[After Resp]:	No price table received\n")
+	}
+	// }()
 	return err
 }
 
