@@ -145,7 +145,7 @@ func (pt *PriceTable) UnaryInterceptorClient(ctx context.Context, method string,
 	// Jiali: after replied. update and store the price info for future
 	if len(header["price"]) > 0 {
 		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
-		pt.UpdateDownstreamPrice(ctx, "echo", header["name"][0], priceDownstream)
+		pt.UpdateDownstreamPrice(ctx, header["method"][0], header["name"][0], priceDownstream)
 		pt.logger(ctx, "[After Resp]:	The price table is from %s\n", header["name"])
 	} else {
 		pt.logger(ctx, "[After Resp]:	No price table received\n")
@@ -166,6 +166,7 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 		return errMissingMetadata
 	}
 
+	methodName := md["method"][0]
 	// print all the k-v pairs in the metadata md
 	// pt.logger(ctx, "[Received Req]:	The sender's name for request is %s\n", md["name"])
 	// for k, v := range md {
@@ -245,7 +246,7 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 		if !pt.rateLimiting {
 			break
 		}
-		ratelimit := pt.RateLimiting(ctx, tok, "echo")
+		ratelimit := pt.RateLimiting(ctx, tok, methodName)
 		// if clientBackoff is greater than 0, update the lastRateLimitedTime
 		if pt.clientBackoff > 0 {
 			if ratelimit == RateLimited && time.Since(pt.lastRateLimitedTime) > pt.clientBackoff {
@@ -292,7 +293,7 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 	// Jiali: after replied. update and store the price info for future
 	if len(header["price"]) > 0 {
 		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
-		pt.UpdateDownstreamPrice(ctx, "echo", header["name"][0], priceDownstream)
+		pt.UpdateDownstreamPrice(ctx, methodName, header["name"][0], priceDownstream)
 		pt.logger(ctx, "[After Resp]:	The price table is from %s\n", header["name"])
 	} else {
 		pt.logger(ctx, "[After Resp]:	No price table received\n")
@@ -352,9 +353,10 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	}
 
 	// overload handler:
-	tokenleft, err := pt.LoadShedding(ctx, tok, "echo")
+	methodName := md["method"][0]
+	tokenleft, err := pt.LoadShedding(ctx, tok, methodName)
 	if err == InsufficientTokens && pt.loadShedding {
-		price_string, _ := pt.RetrieveTotalPrice(ctx, "echo")
+		price_string, _ := pt.RetrieveTotalPrice(ctx, methodName)
 		header := metadata.Pairs("price", price_string, "name", pt.nodeName)
 		pt.logger(ctx, "[Sending Error Resp]:	Total price is %s\n", price_string)
 		grpc.SendHeader(ctx, header)
@@ -383,7 +385,7 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	// Jiali: we need to attach the token info to the context, so that the downstream can retrieve it.
 	// ctx = metadata.AppendToOutgoingContext(ctx, "tokens", tok_string)
 	// Jiali: we actually need multiple kv pairs for the token information, because one context is sent to multiple downstreams.
-	downstreamTokens, _ := pt.SplitTokens(ctx, tokenleft, "echo")
+	downstreamTokens, _ := pt.SplitTokens(ctx, tokenleft, methodName)
 
 	ctx = metadata.AppendToOutgoingContext(ctx, downstreamTokens...)
 
@@ -405,7 +407,7 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	// Attach the price info to response before sending
 	// right now let's just propagate the corresponding price of the RPC method rather than a whole pricetable.
 	// totalPrice_string, _ := PriceTableInstance.ptmap.Load("totalprice")
-	price_string, _ := pt.RetrieveTotalPrice(ctx, "echo")
+	price_string, _ := pt.RetrieveTotalPrice(ctx, methodName)
 
 	header := metadata.Pairs("price", price_string, "name", pt.nodeName)
 	pt.logger(ctx, "[Preparing Resp]:	Total price is %s\n", price_string)
