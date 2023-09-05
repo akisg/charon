@@ -160,13 +160,14 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 
 	// timer the intereceptor overhead
 	interceptorStartTime := time.Now()
-	pt.logger(ctx, "[Before Req]:	Node %s calling %s\n", pt.nodeName, method)
+
 	md, ok := metadata.FromOutgoingContext(ctx)
 	if !ok {
 		return errMissingMetadata
 	}
 
 	methodName := md["method"][0]
+	pt.logger(ctx, "[Before Req]:	Node %s calling %s\n", pt.nodeName, methodName)
 	// print all the k-v pairs in the metadata md
 	// pt.logger(ctx, "[Received Req]:	The sender's name for request is %s\n", md["name"])
 	// for k, v := range md {
