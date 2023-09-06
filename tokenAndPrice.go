@@ -93,7 +93,7 @@ func (pt *PriceTable) calculatePriceAdjustment(diff int64) int64 {
 		// 	return pt.priceStep
 		// }
 		return adjustment
-	} else if diff < -1000 {
+	} else if 2*diff < -pt.latencyThreshold.Microseconds() {
 		return -1
 	} else {
 		return 0
@@ -172,7 +172,7 @@ func (pt *PriceTable) UpdatePricebyQueueDelayLog(ctx context.Context) error {
 	adjustment := int64(0)
 	if diff > 0 {
 		adjustment = int64(math.Log(float64(diff*pt.priceStep/10000) + 1))
-	} else if diff < -1000 {
+	} else if 2*diff < -pt.latencyThreshold.Microseconds() {
 		adjustment = -1
 	}
 
