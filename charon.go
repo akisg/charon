@@ -133,7 +133,8 @@ func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName
 // unaryInterceptor is an example unary interceptor.
 func (pt *PriceTable) UnaryInterceptorClient(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	// Jiali: the following line print the method name of the req/response, will be used to update the
-	pt.logger(ctx, "[Before Sub Req]:	Node %s calling %s\n", pt.nodeName, method)
+	md, _ := metadata.FromOutgoingContext(ctx)
+	pt.logger(ctx, "[Before Sub Req]:	Node %s calling %s\n", pt.nodeName, md["method"][0])
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
 	// overwrite rather than append to the header with the node name of this client
 	ctx = metadata.AppendToOutgoingContext(ctx, "name", pt.nodeName)
