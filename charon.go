@@ -134,7 +134,8 @@ func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName
 func (pt *PriceTable) UnaryInterceptorClient(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	// Jiali: the following line print the method name of the req/response, will be used to update the
 	md, _ := metadata.FromOutgoingContext(ctx)
-	pt.logger(ctx, "[Before Sub Req]:	Node %s calling %s\n", pt.nodeName, md["method"][0])
+	methodName := md["method"][0]
+	pt.logger(ctx, "[Before Sub Req]:	Node %s calling %s\n", pt.nodeName, methodName)
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
 	// overwrite rather than append to the header with the node name of this client
 	ctx = metadata.AppendToOutgoingContext(ctx, "name", pt.nodeName)
@@ -146,7 +147,7 @@ func (pt *PriceTable) UnaryInterceptorClient(ctx context.Context, method string,
 	// Jiali: after replied. update and store the price info for future
 	if len(header["price"]) > 0 {
 		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
-		pt.UpdateDownstreamPrice(ctx, header["method"][0], header["name"][0], priceDownstream)
+		pt.UpdateDownstreamPrice(ctx, methodName, header["name"][0], priceDownstream)
 		pt.logger(ctx, "[After Resp]:	The price table is from %s\n", header["name"])
 	} else {
 		pt.logger(ctx, "[After Resp]:	No price table received\n")
