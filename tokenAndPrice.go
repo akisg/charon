@@ -53,6 +53,8 @@ func (pt *PriceTable) SaveDSPrice(ctx context.Context, methodName string) error 
 	}
 	// save the downstream price to the price table with method name as key.
 	pt.priceTableMap.Store(methodName, downstreamPriceSum)
+	// log the downstream price of the request.
+	pt.logger(ctx, "[Updated DS Price]:	Downstream price of %s is now %d\n", methodName, downstreamPriceSum)
 	return nil
 }
 
@@ -112,7 +114,7 @@ func (pt *PriceTable) UpdatePricebyQueueDelay(ctx context.Context) error {
 	diff := int64(gapLatency*1000) - pt.latencyThreshold.Microseconds()
 	adjustment := pt.calculatePriceAdjustment(diff)
 
-	pt.logger(ctx, "[Update Price by Queue Delay]: own price %d, step %d\n", ownPrice, adjustment)
+	pt.logger(ctx, "[Update Price by Queue Delay]: Own price %d, step %d\n", ownPrice, adjustment)
 
 	ownPrice += adjustment
 	// Set reservePrice to the larger of pt.guidePrice and 0

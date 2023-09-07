@@ -413,7 +413,7 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	price_string, _ := pt.RetrieveTotalPrice(ctx, methodName)
 
 	header := metadata.Pairs("price", price_string, "name", pt.nodeName)
-	pt.logger(ctx, "[Preparing Resp]:	Total price is %s\n", price_string)
+	pt.logger(ctx, "[Preparing Resp]:	Total price of %s is %s\n", methodName, price_string)
 	grpc.SendHeader(ctx, header)
 
 	if pt.pinpointLatency {
