@@ -373,7 +373,7 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 		// 	}
 		// }
 		// return nil, status.Errorf(codes.ResourceExhausted, "req dropped, try again later")
-		return nil, status.Errorf(codes.ResourceExhausted, "%d token for %s price. req dropped, try again later", tok, price_string)
+		return nil, status.Errorf(codes.ResourceExhausted, "%s req dropped by %s. %d token for %s price. Try again later.", methodName, pt.nodeName, tok, price_string)
 	}
 	if err != nil && err != InsufficientTokens {
 		// The limiter failed. This error should be logged and examined.
