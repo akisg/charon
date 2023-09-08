@@ -48,7 +48,7 @@ func (pt *PriceTable) SaveDSPrice(ctx context.Context, methodName string) error 
 	for _, downstreamName := range downstreamNames {
 		// concatenate the method name with node name to distinguish different downstream services calls.
 		downstreamPriceString, _ := pt.priceTableMap.LoadOrStore(methodName+"-"+downstreamName, pt.initprice)
-		pt.logger(ctx, "[Sum DS Prices]:	Downstream price of %s at is %d\n", methodName, downstreamName, downstreamPriceString)
+		pt.logger(ctx, "[Sum DS Prices]:	The price of %s at %s is %s\n", methodName, downstreamName, downstreamPriceString)
 		downstreamPrice := downstreamPriceString.(int64)
 		downstreamPriceSum += downstreamPrice
 	}
