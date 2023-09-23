@@ -62,6 +62,7 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 		pinpointQueuing:     false,
 		rateLimiter:         make(chan int64, 1),
 		invokeAfterRL:       false,
+		lazyResponse:        true,
 		tokensLeft:          10,
 		tokenUpdateRate:     time.Millisecond * 10,
 		lastUpdateTime:      time.Now(),

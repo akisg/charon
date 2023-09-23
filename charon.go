@@ -41,6 +41,7 @@ type PriceTable struct {
 	pinpointQueuing    bool
 	rateLimiter        chan int64
 	invokeAfterRL      bool
+	lazyResponse       bool
 	// updateRate is the rate at which price should be updated at least once.
 	tokensLeft          int64
 	tokenUpdateRate     time.Duration
@@ -410,11 +411,16 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	// Attach the price info to response before sending
 	// right now let's just propagate the corresponding price of the RPC method rather than a whole pricetable.
 	// totalPrice_string, _ := PriceTableInstance.ptmap.Load("totalprice")
-	price_string, _ := pt.RetrieveTotalPrice(ctx, methodName)
 
-	header := metadata.Pairs("price", price_string, "name", pt.nodeName)
-	pt.logger(ctx, "[Preparing Resp]:	Total price of %s is %s\n", methodName, price_string)
-	grpc.SendHeader(ctx, header)
+	// if not pt.lazyResponse
+	if !pt.lazyResponse {
+		price_string, _ := pt.RetrieveTotalPrice(ctx, methodName)
+		header := metadata.Pairs("price", price_string, "name", pt.nodeName)
+		pt.logger(ctx, "[Preparing Resp]:	Total price of %s is %s\n", methodName, price_string)
+		grpc.SendHeader(ctx, header)
+	} else {
+		pt.logger(ctx, "[Preparing Resp]:	Lazy response is enabled, no price attached to response.\n")
+	}
 
 	if pt.pinpointLatency {
 		// if totalLatency > pt.observedDelay {
