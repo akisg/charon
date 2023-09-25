@@ -62,7 +62,7 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 		pinpointQueuing:     false,
 		rateLimiter:         make(chan int64, 1),
 		invokeAfterRL:       false,
-		lazyResponse:        true,
+		lazyResponse:        false,
 		tokensLeft:          10,
 		tokenUpdateRate:     time.Millisecond * 10,
 		lastUpdateTime:      time.Now(),
@@ -132,6 +132,11 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 	if invokeAfterRL, ok := options["invokeAfterRL"].(bool); ok {
 		priceTable.invokeAfterRL = invokeAfterRL
 		priceTable.logger(ctx, "invokeAfterRL		of %s set to %v\n", nodeName, invokeAfterRL)
+	}
+
+	if lazyResponse, ok := options["lazyResponse"].(bool); ok {
+		priceTable.lazyResponse = lazyResponse
+		priceTable.logger(ctx, "lazyResponse		of %s set to %v\n", nodeName, lazyResponse)
 	}
 
 	if tokensLeft, ok := options["tokensLeft"].(int64); ok {
