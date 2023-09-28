@@ -2,15 +2,16 @@ package charon
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
-	"time"
+	"os"
 
+	"net/http/pprof"
 	"strconv"
 	"sync"
-
-	"errors"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -160,6 +161,12 @@ func (pt *PriceTable) UnaryInterceptorClient(ctx context.Context, method string,
 
 // unaryInterceptor is an example unary interceptor.
 func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+	// go func() {
+	// 	log.Println(http.ListenAndServe("localhost:6060", nil))
+	// }()
+	f, _ := os.Create(`cpu.prof`)
+	p := pprof.StartCPUProfile(f)
+	defer pprof.StopCPUProfile(p)
 
 	// timer the intereceptor overhead
 	interceptorStartTime := time.Now()
