@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
-	"os"
 
-	"net/http/pprof"
 	"strconv"
 	"sync"
 	"time"
@@ -164,9 +162,9 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 	// go func() {
 	// 	log.Println(http.ListenAndServe("localhost:6060", nil))
 	// }()
-	f, _ := os.Create(`cpu.prof`)
-	p := pprof.StartCPUProfile(f)
-	defer pprof.StopCPUProfile(p)
+	// f, _ := os.Create(`cpu.prof`)
+	// p := pprof.StartCPUProfile(f)
+	// defer pprof.StopCPUProfile(p)
 
 	// timer the intereceptor overhead
 	interceptorStartTime := time.Now()
