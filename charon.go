@@ -98,7 +98,7 @@ func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName
 	if !pt.loadShedding {
 		return tokens, nil
 	}
-	ownPrice_string, _ := pt.priceTableMap.LoadOrStore("ownprice", pt.initprice)
+	ownPrice_string, _ := pt.priceTableMap.Load("ownprice")
 	ownPrice := ownPrice_string.(int64)
 	downstreamPrice, _ := pt.RetrieveDSPrice(ctx, methodName)
 	totalPrice := ownPrice + downstreamPrice
@@ -133,9 +133,7 @@ func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName
 // unaryInterceptor is an example unary interceptor.
 func (pt *PriceTable) UnaryInterceptorClient(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	// Jiali: the following line print the method name of the req/response, will be used to update the
-	md, _ := metadata.FromOutgoingContext(ctx)
-	methodName := md["method"][0]
-	pt.logger(ctx, "[Before Sub Req]:	Node %s calling %s\n", pt.nodeName, methodName)
+	pt.logger(ctx, "[Before Sub Req]:	Node %s calling Downstream\n", pt.nodeName)
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
 	// overwrite rather than append to the header with the node name of this client
 	ctx = metadata.AppendToOutgoingContext(ctx, "name", pt.nodeName)
@@ -147,6 +145,8 @@ func (pt *PriceTable) UnaryInterceptorClient(ctx context.Context, method string,
 	// Jiali: after replied. update and store the price info for future
 	if len(header["price"]) > 0 {
 		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
+		md, _ := metadata.FromOutgoingContext(ctx)
+		methodName := md["method"][0]
 		pt.UpdateDownstreamPrice(ctx, methodName, header["name"][0], priceDownstream)
 		pt.logger(ctx, "[After Resp]:	The price table is from %s\n", header["name"])
 	} else {
@@ -178,17 +178,15 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 	pt.logger(ctx, "[Before Req]:	Node %s calling %s\n", pt.nodeName, methodName)
 	// print all the k-v pairs in the metadata md
 	// pt.logger(ctx, "[Received Req]:	The sender's name for request is %s\n", md["name"])
-	// for k, v := range md {
-	// 	pt.logger(ctx, "[Sending Req Enduser]:	The metadata for request is %s: %s\n", k, v)
-	// }
-	var metadataLog string
-	for k, v := range md {
-		metadataLog += fmt.Sprintf("%s: %s, ", k, v)
+	if pt.debug {
+		var metadataLog string
+		for k, v := range md {
+			metadataLog += fmt.Sprintf("%s: %s, ", k, v)
+		}
+		if metadataLog != "" {
+			pt.logger(ctx, "[Sending Req Enduser]: The metadata for request is %s\n", metadataLog)
+		}
 	}
-	if metadataLog != "" {
-		pt.logger(ctx, "[Sending Req Enduser]: The metadata for request is %s\n", metadataLog)
-	}
-
 	// if `randomRateLimit` is greater than 0, then we randomly drop requests based on the last digit of `request-id` in md
 	if pt.randomRateLimit > 0 {
 		// get the request-id from the metadata
@@ -329,12 +327,14 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	// for k, v := range md {
 	// 	pt.logger(ctx, "[Received Req]:	The metadata for request is %s: %s\n", k, v)
 	// }
-	var metadataLog string
-	for k, v := range md {
-		metadataLog += fmt.Sprintf("%s: %s, ", k, v)
-	}
-	if metadataLog != "" {
-		pt.logger(ctx, "[Received Req]: The metadata for request is %s\n", metadataLog)
+	if pt.debug {
+		var metadataLog string
+		for k, v := range md {
+			metadataLog += fmt.Sprintf("%s: %s, ", k, v)
+		}
+		if metadataLog != "" {
+			pt.logger(ctx, "[Received Req]: The metadata for request is %s\n", metadataLog)
+		}
 	}
 
 	// Jiali: overload handler, do AQM, deduct the tokens on the request, update price info

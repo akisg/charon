@@ -241,6 +241,15 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 		}
 	}
 
+	// initialize the price table: Store the initprice to the priceTableMap with key "ownprice", and all method
+	// and all method-nodeName pairs to the priceTableMap with key "method-nodeName"
+	priceTable.priceTableMap.Store("ownprice", priceTable.initprice)
+	for method, _ := range priceTable.callMap {
+		priceTable.priceTableMap.Store(method, priceTable.initprice)
+		for _, node := range priceTable.callMap[method] {
+			priceTable.priceTableMap.Store(method+"-"+node, priceTable.initprice)
+		}
+	}
 	return priceTable
 }
 
