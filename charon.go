@@ -22,6 +22,8 @@ var (
 	InsufficientTokens = errors.New("Received insufficient tokens, trigger load shedding.")
 	RateLimited        = errors.New("Insufficient tokens to send, trigger rate limit.")
 	errMissingMetadata = status.Errorf(codes.InvalidArgument, "missing metadata")
+	debug              = false
+	// debugFreq          = int64(1)
 )
 
 // PriceTable implements the Charon price table
@@ -60,7 +62,6 @@ type PriceTable struct {
 	latencyThreshold    time.Duration
 	priceStep           int64
 	debug               bool
-	debugFreq           int64
 	guidePrice          int64
 }
 
@@ -80,10 +81,10 @@ func (pt *PriceTable) unblockRateLimiter() {
 func (pt *PriceTable) RateLimiting(ctx context.Context, tokens int64, methodName string) error {
 	servicePrice, _ := pt.RetrieveDSPrice(ctx, methodName)
 	extratoken := tokens - servicePrice
-	pt.logger(ctx, "[Ratelimiting]: Checking Request. Token is %d, %s price is %d\n", tokens, methodName, servicePrice)
+	logger("[Ratelimiting]: Checking Request. Token is %d, %s price is %d\n", tokens, methodName, servicePrice)
 
 	if extratoken < 0 {
-		pt.logger(ctx, "[Prepare Req]: Request blocked for lack of tokens.")
+		logger("[Prepare Req]: Request blocked for lack of tokens.")
 		return RateLimited
 	}
 	return nil
@@ -106,10 +107,10 @@ func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName
 
 	extratoken := tokens - totalPrice
 
-	pt.logger(ctx, "[Received Req]:	Total price is %d, ownPrice is %d downstream price is %d\n", totalPrice, ownPrice, downstreamPrice)
+	logger("[Received Req]:	Total price is %d, ownPrice is %d downstream price is %d\n", totalPrice, ownPrice, downstreamPrice)
 
 	if extratoken < 0 {
-		pt.logger(ctx, "[Received Req]: Request rejected for lack of tokens. ownPrice is %d downstream price is %d\n", ownPrice, downstreamPrice)
+		logger("[Received Req]: Request rejected for lack of tokens. ownPrice is %d downstream price is %d\n", ownPrice, downstreamPrice)
 		return 0, InsufficientTokens
 	}
 
@@ -125,7 +126,7 @@ func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName
 	var tokenleft int64
 	tokenleft = tokens - ownPrice
 
-	// pt.logger(ctx, "[Received Req]:	Own price updated to %d\n", ownPrice)
+	// logger("[Received Req]:	Own price updated to %d\n", ownPrice)
 
 	return tokenleft, nil
 }
@@ -133,7 +134,7 @@ func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName
 // unaryInterceptor is an example unary interceptor.
 func (pt *PriceTable) UnaryInterceptorClient(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	// Jiali: the following line print the method name of the req/response, will be used to update the
-	pt.logger(ctx, "[Before Sub Req]:	Node %s calling Downstream\n", pt.nodeName)
+	logger("[Before Sub Req]:	Node %s calling Downstream\n", pt.nodeName)
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
 	// overwrite rather than append to the header with the node name of this client
 	ctx = metadata.AppendToOutgoingContext(ctx, "name", pt.nodeName)
@@ -148,9 +149,9 @@ func (pt *PriceTable) UnaryInterceptorClient(ctx context.Context, method string,
 		md, _ := metadata.FromOutgoingContext(ctx)
 		methodName := md["method"][0]
 		pt.UpdateDownstreamPrice(ctx, methodName, header["name"][0], priceDownstream)
-		pt.logger(ctx, "[After Resp]:	The price table is from %s\n", header["name"])
+		logger("[After Resp]:	The price table is from %s\n", header["name"])
 	} else {
-		pt.logger(ctx, "[After Resp]:	No price table received\n")
+		logger("[After Resp]:	No price table received\n")
 	}
 	// }()
 
@@ -175,16 +176,16 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 	}
 
 	methodName := md["method"][0]
-	pt.logger(ctx, "[Before Req]:	Node %s calling %s\n", pt.nodeName, methodName)
+	logger("[Before Req]:	Node %s calling %s\n", pt.nodeName, methodName)
 	// print all the k-v pairs in the metadata md
-	// pt.logger(ctx, "[Received Req]:	The sender's name for request is %s\n", md["name"])
-	if pt.debug {
+	// logger("[Received Req]:	The sender's name for request is %s\n", md["name"])
+	if debug {
 		var metadataLog string
 		for k, v := range md {
 			metadataLog += fmt.Sprintf("%s: %s, ", k, v)
 		}
 		if metadataLog != "" {
-			pt.logger(ctx, "[Sending Req Enduser]: The metadata for request is %s\n", metadataLog)
+			logger("[Sending Req Enduser]: The metadata for request is %s\n", metadataLog)
 		}
 	}
 	// if `randomRateLimit` is greater than 0, then we randomly drop requests based on the last digit of `request-id` in md
@@ -200,7 +201,7 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 			lastDigit := reqid % 100
 			// if the last digit is smaller than the randomRateLimit, then drop the request
 			if lastDigit < pt.randomRateLimit {
-				pt.logger(ctx, "[Random Drop]:	The request is dropped randomly.")
+				logger("[Random Drop]:	The request is dropped randomly.")
 				if pt.invokeAfterRL {
 					opts = append(opts, grpc.MaxCallSendMsgSize(0))
 					_ = invoker(ctx, method, req, reply, cc, opts...)
@@ -213,7 +214,7 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 	// Check the time duration since the last RateLimited error
 	if pt.clientBackoff > 0 && time.Since(pt.lastRateLimitedTime) < pt.clientBackoff {
 		if !pt.rateLimitWaiting {
-			pt.logger(ctx, "[Backoff Triggered]:	Client is rate limited, req dropped without waiting.")
+			logger("[Backoff Triggered]:	Client is rate limited, req dropped without waiting.")
 			// the request is dropped without waiting in this scenario, but we want to return an error to the client
 			// to do this, we use a fake invoker without actually sending the request to the server
 			// Invoke the gRPC method with the new callOptions: MaxCallSendMsgSize as 0
@@ -233,7 +234,7 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 	for {
 		// if waiting for longer than ClientTimeout, return error RateLimited
 		if pt.rateLimiting && pt.rateLimitWaiting && time.Since(startTime) > pt.clientTimeOut {
-			pt.logger(ctx, "[Client Timeout]:	Client timeout waiting for tokens.\n")
+			logger("[Client Timeout]:	Client timeout waiting for tokens.\n")
 			// Invoke the gRPC method with the new callOptions: MaxCallSendMsgSize as 0
 			// append to opts
 			if pt.invokeAfterRL {
@@ -257,14 +258,14 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 		// if clientBackoff is greater than 0, update the lastRateLimitedTime
 		if pt.clientBackoff > 0 {
 			if ratelimit == RateLimited && time.Since(pt.lastRateLimitedTime) > pt.clientBackoff {
-				pt.logger(ctx, "[Backoff Started]:	Client has been rate limited, backoff started.\n")
+				logger("[Backoff Started]:	Client has been rate limited, backoff started.\n")
 				pt.lastRateLimitedTime = time.Now()
 			}
 		}
 
 		if ratelimit == RateLimited {
 			if !pt.rateLimitWaiting {
-				pt.logger(ctx, "[Rate Limited]:	Client is rate limited, req dropped without waiting.\n")
+				logger("[Rate Limited]:	Client is rate limited, req dropped without waiting.\n")
 				// the request is dropped without waiting in this scenario, but we want to return an error to the client
 				// to do this, we use a fake invoker without actually sending the request to the server
 				// Invoke the gRPC method with the new callOptions: MaxCallSendMsgSize as 0
@@ -276,9 +277,9 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 				return status.Error(codes.ResourceExhausted, "Client is rate limited, req dropped without waiting.")
 			}
 			<-pt.rateLimiter
-			// pt.logger(ctx, "[Rate Limited]:	Client has been rate limited for %d ms, \n", time.Since(startTime).Milliseconds())
+			// logger("[Rate Limited]:	Client has been rate limited for %d ms, \n", time.Since(startTime).Milliseconds())
 			// log the waiting time so far for client and how long until timeout
-			pt.logger(ctx, "[Rate Limited]:	Client has been rate limited for %d ms, %d ms left until timeout.\n",
+			logger("[Rate Limited]:	Client has been rate limited for %d ms, %d ms left until timeout.\n",
 				time.Since(startTime).Milliseconds(), (pt.clientTimeOut - time.Since(startTime)).Milliseconds())
 		} else {
 			break
@@ -290,7 +291,7 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 	ctx = metadata.AppendToOutgoingContext(ctx, "tokens", tok_string, "name", pt.nodeName)
 
 	// check the timer and log the overhead of intercepting
-	pt.logger(ctx, "[Enduser Interceptor Overhead]:	 %.2f milliseconds\n", float64(time.Since(interceptorStartTime).Microseconds())/1000)
+	logger("[Enduser Interceptor Overhead]:	 %.2f milliseconds\n", float64(time.Since(interceptorStartTime).Microseconds())/1000)
 
 	var header metadata.MD // variable to store header and trailer
 	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
@@ -301,9 +302,9 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 	if len(header["price"]) > 0 {
 		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
 		pt.UpdateDownstreamPrice(ctx, methodName, header["name"][0], priceDownstream)
-		pt.logger(ctx, "[After Resp]:	The price table is from %s\n", header["name"])
+		logger("[After Resp]:	The price table is from %s\n", header["name"])
 	} else {
-		pt.logger(ctx, "[After Resp]:	No price table received\n")
+		logger("[After Resp]:	No price table received\n")
 	}
 	// }()
 	return err
@@ -311,7 +312,7 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 
 // func getMethodInfo(ctx context.Context) {
 // 	methodName, _ := grpc.Method(ctx)
-// 	logger(ctx, methodName)
+// 	logger(methodName)
 // }
 
 func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
@@ -325,15 +326,15 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 
 	// print all the k-v pairs in the metadata md
 	// for k, v := range md {
-	// 	pt.logger(ctx, "[Received Req]:	The metadata for request is %s: %s\n", k, v)
+	// 	logger("[Received Req]:	The metadata for request is %s: %s\n", k, v)
 	// }
-	if pt.debug {
+	if debug {
 		var metadataLog string
 		for k, v := range md {
 			metadataLog += fmt.Sprintf("%s: %s, ", k, v)
 		}
 		if metadataLog != "" {
-			pt.logger(ctx, "[Received Req]: The metadata for request is %s\n", metadataLog)
+			logger("[Received Req]: The metadata for request is %s\n", metadataLog)
 		}
 	}
 
@@ -342,7 +343,7 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	var err error
 
 	if val, ok := md["tokens-"+pt.nodeName]; ok {
-		pt.logger(ctx, "[Received Req]:	tokens for %s are %s\n", pt.nodeName, val)
+		logger("[Received Req]:	tokens for %s are %s\n", pt.nodeName, val)
 		// raise error if the val length is not 1
 		if len(val) > 1 {
 			return nil, status.Errorf(codes.InvalidArgument, "duplicated tokens")
@@ -351,7 +352,7 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 		}
 		tok, err = strconv.ParseInt(val[0], 10, 64)
 	} else {
-		pt.logger(ctx, "[Received Req]:	tokens are %s\n", md["tokens"])
+		logger("[Received Req]:	tokens are %s\n", md["tokens"])
 		// raise error if the tokens length is not 1
 		if len(md["tokens"]) > 1 {
 			return nil, status.Errorf(codes.InvalidArgument, "duplicated tokens")
@@ -367,11 +368,11 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	if err == InsufficientTokens && pt.loadShedding {
 		price_string, _ := pt.RetrieveTotalPrice(ctx, methodName)
 		header := metadata.Pairs("price", price_string, "name", pt.nodeName)
-		pt.logger(ctx, "[Sending Error Resp]:	Total price is %s\n", price_string)
+		logger("[Sending Error Resp]:	Total price is %s\n", price_string)
 		grpc.SendHeader(ctx, header)
 
 		totalLatency := time.Since(startTime)
-		pt.logger(ctx, "[Server-side Timer] Processing Duration is: %.2d milliseconds\n", totalLatency.Milliseconds())
+		logger("[Server-side Timer] Processing Duration is: %.2d milliseconds\n", totalLatency.Milliseconds())
 
 		// if pt.pinpointLatency {
 		// 	if totalLatency > pt.observedDelay {
@@ -387,8 +388,8 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 		return nil, status.Error(codes.Internal, "internal error")
 	}
 
-	tok_string := strconv.FormatInt(tokenleft, 10)
-	pt.logger(ctx, "[Preparing Sub Req]:	Token left is %s\n", tok_string)
+	// tok_string := strconv.FormatInt(tokenleft, 10)
+	// logger("[Preparing Sub Req]:	Token left is %s\n", tok_string)
 
 	// [critical] Jiali: Being outgoing seems to be critical for us.
 	// Jiali: we need to attach the token info to the context, so that the downstream can retrieve it.
@@ -399,7 +400,7 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	ctx = metadata.AppendToOutgoingContext(ctx, downstreamTokens...)
 
 	// queuingDelay := time.Since(startTime)
-	// pt.logger(ctx, "[Server-side Timer] Queuing delay is: %.2d milliseconds\n", queuingDelay.Milliseconds())
+	// logger("[Server-side Timer] Queuing delay is: %.2d milliseconds\n", queuingDelay.Milliseconds())
 
 	// if pt.pinpointQueuing {
 	// 	// increment the counter and add the queuing delay to the observed delay
@@ -409,7 +410,7 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 
 	totalLatency := time.Since(startTime)
 	// log the total latency in unit of millisecond, decimal precision 2
-	pt.logger(ctx, "[Server-side Interceptor] Overhead is: %.2f milliseconds\n", float64(totalLatency.Microseconds())/1000)
+	logger("[Server-side Interceptor] Overhead is: %.2f milliseconds\n", float64(totalLatency.Microseconds())/1000)
 
 	m, err := handler(ctx, req)
 
@@ -421,10 +422,10 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	if !pt.lazyResponse {
 		price_string, _ := pt.RetrieveTotalPrice(ctx, methodName)
 		header := metadata.Pairs("price", price_string, "name", pt.nodeName)
-		pt.logger(ctx, "[Preparing Resp]:	Total price of %s is %s\n", methodName, price_string)
+		logger("[Preparing Resp]:	Total price of %s is %s\n", methodName, price_string)
 		grpc.SendHeader(ctx, header)
 	} else {
-		pt.logger(ctx, "[Preparing Resp]:	Lazy response is enabled, no price attached to response.\n")
+		logger("[Preparing Resp]:	Lazy response is enabled, no price attached to response.\n")
 	}
 
 	if pt.pinpointLatency {
@@ -438,7 +439,7 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	}
 
 	if err != nil {
-		pt.logger(ctx, "RPC failed with error %v", err)
+		logger("RPC failed with error %v", err)
 	}
 	return m, err
 }
@@ -451,12 +452,12 @@ type wrappedStream struct {
 }
 
 func (w *wrappedStream) RecvMsg(m interface{}) error {
-	logger(ctx, "Receive a message (Type: %T) at %s", m, time.Now().Format(time.RFC3339))
+	logger("Receive a message (Type: %T) at %s", m, time.Now().Format(time.RFC3339))
 	return w.ServerStream.RecvMsg(m)
 }
 
 func (w *wrappedStream) SendMsg(m interface{}) error {
-	logger(ctx, "Send a message (Type: %T) at %v", m, time.Now().Format(time.RFC3339))
+	logger("Send a message (Type: %T) at %v", m, time.Now().Format(time.RFC3339))
 	return w.ServerStream.SendMsg(m)
 }
 
@@ -473,7 +474,7 @@ func StreamInterceptor(srv interface{}, ss grpc.ServerStream, info *grpc.StreamS
 
 	err := handler(srv, newWrappedStream(ss))
 	if err != nil {
-		logger(ctx, "RPC failed with error %v", err)
+		logger("RPC failed with error %v", err)
 	}
 	return err
 }

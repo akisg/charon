@@ -1,12 +1,9 @@
 package charon
 
 import (
-	"context"
 	"math/rand"
 	"sync"
 	"time"
-
-	"google.golang.org/grpc/metadata"
 )
 
 // NewPriceTable creates a new instance of PriceTable.
@@ -32,8 +29,8 @@ func NewPriceTable(initprice int64, nodeName string, callmap map[string][]string
 		observedDelay:      time.Duration(0),
 		clientTimeOut:      time.Millisecond * 5,
 		priceStep:          1,
-		debug:              false,
-		debugFreq:          4000,
+		// debug:              false,
+		// debugFreq:          4000,
 	}
 	// priceTable.rateLimiter <- 1
 	// Only refill the tokens when the interceptor is for enduser.
@@ -80,78 +77,78 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 		throughputThreshold: 0,
 		latencyThreshold:    time.Duration(0),
 		priceStep:           1,
-		debug:               false,
-		debugFreq:           4000,
-		guidePrice:          -1,
+		// debug:               false,
+		// debugFreq:           4000,
+		guidePrice: -1,
 	}
 
 	// create a new incoming context with the "request-id" as "0"
-	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
+	// ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
 
-	if debug, ok := options["debug"].(bool); ok {
-		priceTable.debug = debug
+	if debugOpt, ok := options["debug"].(bool); ok {
+		debug = debugOpt
 	}
 
-	if debugFreq, ok := options["debugFreq"].(int64); ok {
-		priceTable.debugFreq = debugFreq
-		// print the debug and debugFreq of the node if the name is not client
-		priceTable.logger(ctx, "debug and debugFreq of %s set to %v and %v\n", nodeName, priceTable.debug, debugFreq)
-	}
+	// if debugFreq, ok := options["debugFreq"].(int64); ok {
+	// 	priceTable.debugFreq = debugFreq
+	// 	// print the debug and debugFreq of the node if the name is not client
+	// 	logger("debug and debugFreq of %s set to %v and %v\n", nodeName, priceTable.debug, )
+	// }
 
 	if initprice, ok := options["initprice"].(int64); ok {
 		priceTable.initprice = initprice
 		// print the initprice of the node if the name is not client
-		priceTable.logger(ctx, "initprice of %s set to %d\n", nodeName, priceTable.initprice)
+		logger("initprice of %s set to %d\n", nodeName, priceTable.initprice)
 	}
 
 	if rateLimiting, ok := options["rateLimiting"].(bool); ok {
 		priceTable.rateLimiting = rateLimiting
-		priceTable.logger(ctx, "rateLimiting 		of %s set to %v\n", nodeName, rateLimiting)
+		logger("rateLimiting 		of %s set to %v\n", nodeName, rateLimiting)
 	}
 
 	if loadShedding, ok := options["loadShedding"].(bool); ok {
 		priceTable.loadShedding = loadShedding
-		priceTable.logger(ctx, "loadShedding 		of %s set to %v\n", nodeName, loadShedding)
+		logger("loadShedding 		of %s set to %v\n", nodeName, loadShedding)
 	}
 
 	if pinpointThroughput, ok := options["pinpointThroughput"].(bool); ok {
 		priceTable.pinpointThroughput = pinpointThroughput
-		priceTable.logger(ctx, "pinpointThroughput	of %s set to %v\n", nodeName, pinpointThroughput)
+		logger("pinpointThroughput	of %s set to %v\n", nodeName, pinpointThroughput)
 	}
 
 	if pinpointLatency, ok := options["pinpointLatency"].(bool); ok {
 		priceTable.pinpointLatency = pinpointLatency
-		priceTable.logger(ctx, "pinpointLatency		of %s set to %v\n", nodeName, pinpointLatency)
+		logger("pinpointLatency		of %s set to %v\n", nodeName, pinpointLatency)
 	}
 
 	if pinpointQueuing, ok := options["pinpointQueuing"].(bool); ok {
 		priceTable.pinpointQueuing = pinpointQueuing
-		priceTable.logger(ctx, "pinpointQueuing		of %s set to %v\n", nodeName, pinpointQueuing)
+		logger("pinpointQueuing		of %s set to %v\n", nodeName, pinpointQueuing)
 	}
 
 	if invokeAfterRL, ok := options["invokeAfterRL"].(bool); ok {
 		priceTable.invokeAfterRL = invokeAfterRL
-		priceTable.logger(ctx, "invokeAfterRL		of %s set to %v\n", nodeName, invokeAfterRL)
+		logger("invokeAfterRL		of %s set to %v\n", nodeName, invokeAfterRL)
 	}
 
 	if lazyResponse, ok := options["lazyResponse"].(bool); ok {
 		priceTable.lazyResponse = lazyResponse
-		priceTable.logger(ctx, "lazyResponse		of %s set to %v\n", nodeName, lazyResponse)
+		logger("lazyResponse		of %s set to %v\n", nodeName, lazyResponse)
 	}
 
 	if tokensLeft, ok := options["tokensLeft"].(int64); ok {
 		priceTable.tokensLeft = tokensLeft
-		priceTable.logger(ctx, "tokensLeft		of %s set to %v\n", nodeName, tokensLeft)
+		logger("tokensLeft		of %s set to %v\n", nodeName, tokensLeft)
 	}
 
 	if tokenUpdateRate, ok := options["tokenUpdateRate"].(time.Duration); ok {
 		priceTable.tokenUpdateRate = tokenUpdateRate
-		priceTable.logger(ctx, "tokenUpdateRate		of %s set to %v\n", nodeName, tokenUpdateRate)
+		logger("tokenUpdateRate		of %s set to %v\n", nodeName, tokenUpdateRate)
 	}
 
 	if tokenUpdateStep, ok := options["tokenUpdateStep"].(int64); ok {
 		priceTable.tokenUpdateStep = tokenUpdateStep
-		priceTable.logger(ctx, "tokenUpdateStep		of %s set to %v\n", nodeName, tokenUpdateStep)
+		logger("tokenUpdateStep		of %s set to %v\n", nodeName, tokenUpdateStep)
 	}
 
 	if tokenRefillDist, ok := options["tokenRefillDist"].(string); ok {
@@ -160,7 +157,7 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 			tokenRefillDist = "fixed"
 		}
 		priceTable.tokenRefillDist = tokenRefillDist
-		priceTable.logger(ctx, "tokenRefillDist		of %s set to %v\n", nodeName, tokenRefillDist)
+		logger("tokenRefillDist		of %s set to %v\n", nodeName, tokenRefillDist)
 	}
 
 	if tokenStrategy, ok := options["tokenStrategy"].(string); ok {
@@ -169,33 +166,33 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 			tokenStrategy = "all"
 		}
 		priceTable.tokenStrategy = tokenStrategy
-		priceTable.logger(ctx, "tokenStrategy		of %s set to %v\n", nodeName, tokenStrategy)
+		logger("tokenStrategy		of %s set to %v\n", nodeName, tokenStrategy)
 	}
 
 	if priceStrategy, ok := options["priceStrategy"].(string); ok {
 		// if the priceStrategy is not "step" or "proportional", then set it to be "step"
 		priceTable.priceStrategy = priceStrategy
-		priceTable.logger(ctx, "priceStrategy		of %s set to %v\n", nodeName, priceStrategy)
+		logger("priceStrategy		of %s set to %v\n", nodeName, priceStrategy)
 	}
 
 	if priceUpdateRate, ok := options["priceUpdateRate"].(time.Duration); ok {
 		priceTable.priceUpdateRate = priceUpdateRate
-		priceTable.logger(ctx, "priceUpdateRate		of %s set to %v\n", nodeName, priceUpdateRate)
+		logger("priceUpdateRate		of %s set to %v\n", nodeName, priceUpdateRate)
 	}
 
 	if clientTimeOut, ok := options["clientTimeOut"].(time.Duration); ok {
 		priceTable.clientTimeOut = clientTimeOut
-		priceTable.logger(ctx, "clientTimeout		of %s set to %v\n", nodeName, clientTimeOut)
+		logger("clientTimeout		of %s set to %v\n", nodeName, clientTimeOut)
 	}
 
 	if clientBackoff, ok := options["clientBackoff"].(time.Duration); ok {
 		priceTable.clientBackoff = clientBackoff
-		priceTable.logger(ctx, "clientBackoff		of %s set to %v\n", nodeName, clientBackoff)
+		logger("clientBackoff		of %s set to %v\n", nodeName, clientBackoff)
 	}
 
 	if randomRateLimit, ok := options["randomRateLimit"].(int64); ok {
 		priceTable.randomRateLimit = randomRateLimit
-		priceTable.logger(ctx, "randomRateLimit		of %s set to %v\n", nodeName, randomRateLimit)
+		logger("randomRateLimit		of %s set to %v\n", nodeName, randomRateLimit)
 	}
 
 	// priceTable.rateLimitWaiting = true if and only if the clientTimeOut is set to be greater than 0 duration
@@ -204,26 +201,26 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 	} else {
 		priceTable.rateLimitWaiting = false
 	}
-	priceTable.logger(ctx, "rateLimitWaiting 	of %s set to %v\n", nodeName, priceTable.rateLimitWaiting)
+	logger("rateLimitWaiting 	of %s set to %v\n", nodeName, priceTable.rateLimitWaiting)
 
 	if throughputThreshold, ok := options["throughputThreshold"].(int64); ok {
 		priceTable.throughputThreshold = throughputThreshold
-		priceTable.logger(ctx, "throughputThreshold	of %s set to %v\n", nodeName, throughputThreshold)
+		logger("throughputThreshold	of %s set to %v\n", nodeName, throughputThreshold)
 	}
 
 	if latencyThreshold, ok := options["latencyThreshold"].(time.Duration); ok {
 		priceTable.latencyThreshold = latencyThreshold
-		priceTable.logger(ctx, "latencyThreshold	of %s set to %v\n", nodeName, latencyThreshold)
+		logger("latencyThreshold	of %s set to %v\n", nodeName, latencyThreshold)
 	}
 
 	if priceStep, ok := options["priceStep"].(int64); ok {
 		priceTable.priceStep = priceStep
-		priceTable.logger(ctx, "priceStep		of %s set to %v\n", nodeName, priceStep)
+		logger("priceStep		of %s set to %v\n", nodeName, priceStep)
 	}
 
 	if guidePrice, ok := options["guidePrice"].(int64); ok {
 		priceTable.guidePrice = guidePrice
-		priceTable.logger(ctx, "guidePrice		of %s set to %v\n", nodeName, guidePrice)
+		logger("guidePrice		of %s set to %v\n", nodeName, guidePrice)
 	}
 
 	// Rest of the code remains the same
@@ -286,7 +283,7 @@ func (pt *PriceTable) tokenRefill(tokenRefillDist string, tokenUpdateStep int64,
 			pt.lastUpdateTime = time.Now()
 			pt.unblockRateLimiter()
 			// ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
-			// pt.logger(ctx, "[TokenRefill]: Tokens refilled. Tokens left: %d\n", pt.tokensLeft)
+			// logger("[TokenRefill]: Tokens refilled. Tokens left: %d\n", pt.tokensLeft)
 		}
 	}
 }
@@ -304,7 +301,7 @@ func (pt *PriceTable) nextTokenUpdateInterval(lambda float64) time.Duration {
 	// lambda := 0.5
 	nextTickDuration := time.Duration(rand.ExpFloat64()/lambda) * time.Millisecond
 	// ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
-	// pt.logger(ctx, "[TokenRefill]: Next tick duration: %v\n", nextTickDuration)
+	// logger("[TokenRefill]: Next tick duration: %v\n", nextTickDuration)
 
 	if nextTickDuration <= 0 {
 		// Handle the case when nextTickDuration is non-positive

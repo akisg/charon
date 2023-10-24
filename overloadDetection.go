@@ -25,10 +25,10 @@ func (pt *PriceTable) GetCount() int64 {
 func (pt *PriceTable) latencyCheck() {
 	for range time.Tick(pt.priceUpdateRate) {
 		// create a new incoming context with the "request-id" as "0"
-		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
+		// ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
 
 		// change to using the average latency
-		pt.UpdateOwnPrice(ctx, pt.observedDelay.Milliseconds() > pt.latencyThreshold.Milliseconds()*pt.GetCount())
+		pt.UpdateOwnPrice(pt.observedDelay.Milliseconds() > pt.latencyThreshold.Milliseconds()*pt.GetCount())
 		pt.observedDelay = time.Duration(0)
 	}
 }
@@ -69,18 +69,18 @@ func (pt *PriceTable) queuingCheck() {
 		/*
 			cumulativeLat := medianBucket(currHist)
 			// printHistogram(currHist)
-			pt.logger(ctx, "[Cumulative Waiting Time Median]:	%f ms.\n", cumulativeLat)
+			logger("[Cumulative Waiting Time Median]:	%f ms.\n", cumulativeLat)
 			// printHistogram(&diff)
-			pt.logger(ctx, "[Incremental Waiting Time 90-tile]:	%f ms.\n", percentileBucket(&diff, 90))
-			pt.logger(ctx, "[Incremental Waiting Time Median]:	%f ms.\n", medianBucket(&diff))
-			pt.logger(ctx, "[Incremental Waiting Time Maximum]:	%f ms.\n", maximumBucket(&diff))
+			logger("[Incremental Waiting Time 90-tile]:	%f ms.\n", percentileBucket(&diff, 90))
+			logger("[Incremental Waiting Time Median]:	%f ms.\n", medianBucket(&diff))
+			logger("[Incremental Waiting Time Maximum]:	%f ms.\n", maximumBucket(&diff))
 		*/
-		pt.logger(ctx, "[Incremental Waiting Time Maximum]:	%f ms.\n", gapLatency)
+		logger("[Incremental Waiting Time Maximum]:	%f ms.\n", gapLatency)
 		// store the gapLatency in the context ctx
 		ctx = context.WithValue(ctx, "gapLatency", gapLatency)
 
 		if pt.priceStrategy == "step" {
-			pt.UpdateOwnPrice(ctx, pt.overloadDetection(ctx))
+			pt.UpdateOwnPrice(pt.overloadDetection(ctx))
 		} else if pt.priceStrategy == "proportional" {
 			pt.UpdatePricebyQueueDelay(ctx)
 		} else if pt.priceStrategy == "exponential" {
@@ -91,7 +91,7 @@ func (pt *PriceTable) queuingCheck() {
 		// copy the content of current histogram to the previous histogram
 		prevHist = currHist
 		// log the time elapsed for the query
-		pt.logger(ctx, "[Query Latency]:	Overhead is %.2f milliseconds\n", float64(time.Since(start).Microseconds())/1000)
+		logger("[Query Latency]:	Overhead is %.2f milliseconds\n", float64(time.Since(start).Microseconds())/1000)
 	}
 }
 
@@ -100,11 +100,11 @@ func (pt *PriceTable) throughputCheck() {
 	for range time.Tick(pt.priceUpdateRate) {
 		// pt.Decrement(pt.throughputThreshold)
 		// Create an empty context
-		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
-		pt.logger(ctx, "[Throughput Counter]:	The throughtput counter is %d\n", pt.throughputCounter)
+		// ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
+		logger("[Throughput Counter]:	The throughtput counter is %d\n", pt.throughputCounter)
 		// pt.UpdateOwnPrice(ctx, pt.GetCount() > 0)
 		// update own price if getCounter is greater than the threshold
-		pt.UpdateOwnPrice(ctx, pt.overloadDetection(ctx))
+		pt.UpdateOwnPrice(pt.GetCount() > pt.throughputThreshold)
 	}
 }
 
@@ -112,8 +112,7 @@ func (pt *PriceTable) throughputCheck() {
 func (pt *PriceTable) checkBoth() {
 	var prevHist *metrics.Float64Histogram
 	for range time.Tick(pt.priceUpdateRate) {
-		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
-		pt.logger(ctx, "[Throughput Counter]:	The throughtput counter is %d\n", pt.throughputCounter)
+		logger("[Throughput Counter]:	The throughtput counter is %d\n", pt.throughputCounter)
 
 		// get the current histogram
 		currHist := readHistogram()
@@ -133,13 +132,13 @@ func (pt *PriceTable) checkBoth() {
 
 		cumulativeLat := medianBucket(currHist)
 		// printHistogram(currHist)
-		pt.logger(ctx, "[Cumulative Waiting Time Median]:	%f ms.\n", cumulativeLat)
+		logger("[Cumulative Waiting Time Median]:	%f ms.\n", cumulativeLat)
 		// printHistogram(&diff)
-		pt.logger(ctx, "[Incremental Waiting Time 90-tile]:	%f ms.\n", percentileBucket(&diff, 90))
-		pt.logger(ctx, "[Incremental Waiting Time Median]:	%f ms.\n", medianBucket(&diff))
-		pt.logger(ctx, "[Incremental Waiting Time Maximum]:	%f ms.\n", maximumBucket(&diff))
+		logger("[Incremental Waiting Time 90-tile]:	%f ms.\n", percentileBucket(&diff, 90))
+		logger("[Incremental Waiting Time Median]:	%f ms.\n", medianBucket(&diff))
+		logger("[Incremental Waiting Time Maximum]:	%f ms.\n", maximumBucket(&diff))
 
-		pt.UpdateOwnPrice(ctx, pt.GetCount() > pt.throughputThreshold && int64(gapLatency*1000) > pt.latencyThreshold.Microseconds())
+		pt.UpdateOwnPrice(pt.GetCount() > pt.throughputThreshold && int64(gapLatency*1000) > pt.latencyThreshold.Microseconds())
 		// copy the content of current histogram to the previous histogram
 		prevHist = currHist
 	}
@@ -151,11 +150,7 @@ func (pt *PriceTable) checkBoth() {
 // then the overload flag is set to false. The overload flag is then used to update
 // the price table.
 func (pt *PriceTable) overloadDetection(ctx context.Context) bool {
-	if pt.pinpointThroughput {
-		if pt.GetCount() > pt.throughputThreshold {
-			return true
-		}
-	} else if pt.pinpointQueuing {
+	if pt.pinpointQueuing {
 		// read the gapLatency from context ctx
 		gapLatency := ctx.Value("gapLatency").(float64)
 

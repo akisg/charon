@@ -13,7 +13,7 @@ import (
 // SplitTokens splits the tokens left on the request to the downstream services.
 // It returns a map, with the downstream service names as keys, and tokens left for them as values.
 func (pt *PriceTable) SplitTokens(ctx context.Context, tokenleft int64, methodName string) ([]string, error) {
-	downstreamNames, _ := pt.callMap[methodName]
+	downstreamNames := pt.callMap[methodName]
 	size := len(downstreamNames)
 	if size == 0 {
 		return nil, nil
@@ -23,7 +23,7 @@ func (pt *PriceTable) SplitTokens(ctx context.Context, tokenleft int64, methodNa
 	downstreamPriceSum, _ := pt.RetrieveDSPrice(ctx, methodName)
 	tokenleftPerDownstream := (tokenleft - downstreamPriceSum) / int64(size)
 
-	pt.logger(ctx, "[Split tokens]: downstream total price is %d, from %d downstream services for %s, extra token left for each ds is %d\n",
+	logger("[Split tokens]: downstream total price is %d, from %d downstream services for %s, extra token left for each ds is %d\n",
 		downstreamPriceSum, size, pt.nodeName, tokenleftPerDownstream)
 
 	for _, downstreamName := range downstreamNames {
@@ -32,7 +32,7 @@ func (pt *PriceTable) SplitTokens(ctx context.Context, tokenleft int64, methodNa
 		downstreamPrice := downstreamPriceString.(int64)
 		downstreamToken := tokenleftPerDownstream + downstreamPrice
 		downstreamTokens = append(downstreamTokens, "tokens-"+downstreamName, strconv.FormatInt(downstreamToken, 10))
-		pt.logger(ctx, "[Split tokens]:	token for %s is %d + %d\n", downstreamName, tokenleftPerDownstream, downstreamPrice)
+		logger("[Split tokens]:	token for %s is %d + %d\n", downstreamName, tokenleftPerDownstream, downstreamPrice)
 	}
 	return downstreamTokens, nil
 }
@@ -47,19 +47,19 @@ func (pt *PriceTable) RetrieveDSPrice(ctx context.Context, methodName string) (i
 // SaveDSPrice saves the downstream price table to the price table. It loops through the downstreamNames and save the downstream price to the price table.
 func (pt *PriceTable) SaveDSPrice(ctx context.Context, methodName string) error {
 	// retrive downstream node name involved in the request from callmap.
-	downstreamNames, _ := pt.callMap[methodName]
+	downstreamNames := pt.callMap[methodName]
 	var downstreamPriceSum int64
 	for _, downstreamName := range downstreamNames {
 		// concatenate the method name with node name to distinguish different downstream services calls.
 		downstreamPrice, _ := pt.priceTableMap.Load(methodName + "-" + downstreamName)
-		pt.logger(ctx, "[Sum DS Prices]:	The price of %s at %s is %d.\n", methodName, downstreamName, downstreamPrice)
+		logger("[Sum DS Prices]:	The price of %s at %s is %d.\n", methodName, downstreamName, downstreamPrice)
 		// downstreamPrice := downstreamPriceString.(int64)
 		downstreamPriceSum += downstreamPrice.(int64)
 	}
 	// save the downstream price to the price table with method name as key.
 	pt.priceTableMap.Store(methodName, downstreamPriceSum)
 	// log the downstream price of the request.
-	pt.logger(ctx, "[Updated DS Price]:	Downstream price of %s is now %d\n", methodName, downstreamPriceSum)
+	logger("[Updated DS Price]:	Downstream price of %s is now %d\n", methodName, downstreamPriceSum)
 	return nil
 }
 
@@ -69,17 +69,17 @@ func (pt *PriceTable) RetrieveTotalPrice(ctx context.Context, methodName string)
 	downstreamPrice, _ := pt.RetrieveDSPrice(ctx, methodName)
 	totalPrice := ownPrice + downstreamPrice
 	price_string := strconv.FormatInt(totalPrice, 10)
-	pt.logger(ctx, "[Retrieve Total Price]:	Downstream price of %s is now %d, total price %d \n", methodName, downstreamPrice, totalPrice)
+	logger("[Retrieve Total Price]:	Downstream price of %s is now %d, total price %d \n", methodName, downstreamPrice, totalPrice)
 	return price_string, nil
 }
 
 // Assume that own price is per microservice and it does not change across different types of requests/interfaces.
-func (pt *PriceTable) UpdateOwnPrice(ctx context.Context, congestion bool) error {
+func (pt *PriceTable) UpdateOwnPrice(congestion bool) error {
 
 	ownPrice_string, _ := pt.priceTableMap.Load("ownprice")
 	ownPrice := ownPrice_string.(int64)
 	// The following code has been moved to decrementCounter() for pinpointThroughput.
-	pt.logger(ctx, "[Update OwnPrice]:	congestion is %t, own price %d, step %d\n", congestion, ownPrice, pt.priceStep)
+	logger("[Update OwnPrice]:	congestion is %t, own price %d, step %d\n", congestion, ownPrice, pt.priceStep)
 	if congestion {
 		ownPrice += pt.priceStep
 		if pt.guidePrice > -1 {
@@ -89,7 +89,7 @@ func (pt *PriceTable) UpdateOwnPrice(ctx context.Context, congestion bool) error
 		ownPrice -= 1
 	}
 	pt.priceTableMap.Store("ownprice", ownPrice)
-	pt.logger(ctx, "[Update OwnPrice]:	Own price updated to %d\n", ownPrice)
+	logger("[Update OwnPrice]:	Own price updated to %d\n", ownPrice)
 	return nil
 }
 
@@ -120,7 +120,7 @@ func (pt *PriceTable) UpdatePricebyQueueDelay(ctx context.Context) error {
 	diff := int64(gapLatency*1000) - pt.latencyThreshold.Microseconds()
 	adjustment := pt.calculatePriceAdjustment(diff)
 
-	pt.logger(ctx, "[Update Price by Queue Delay]: Own price %d, step %d\n", ownPrice, adjustment)
+	logger("[Update Price by Queue Delay]: Own price %d, step %d\n", ownPrice, adjustment)
 
 	ownPrice += adjustment
 	// Set reservePrice to the larger of pt.guidePrice and 0
@@ -131,7 +131,7 @@ func (pt *PriceTable) UpdatePricebyQueueDelay(ctx context.Context) error {
 	}
 
 	pt.priceTableMap.Store("ownprice", ownPrice)
-	pt.logger(ctx, "[Update Price by Queue Delay]: Own price updated to %d\n", ownPrice)
+	logger("[Update Price by Queue Delay]: Own price updated to %d\n", ownPrice)
 
 	return nil
 }
@@ -149,7 +149,7 @@ func (pt *PriceTable) UpdatePricebyQueueDelayExp(ctx context.Context) error {
 	// adjustment is exponential function of diff/1000
 	adjustment := int64(math.Exp(float64(diff*pt.priceStep/10000))) - 1
 
-	pt.logger(ctx, "[Update Price by Queue Delay]: own price %d, step %d\n", ownPrice, adjustment)
+	logger("[Update Price by Queue Delay]: own price %d, step %d\n", ownPrice, adjustment)
 
 	ownPrice += adjustment
 
@@ -161,7 +161,7 @@ func (pt *PriceTable) UpdatePricebyQueueDelayExp(ctx context.Context) error {
 	}
 
 	pt.priceTableMap.Store("ownprice", ownPrice)
-	pt.logger(ctx, "[Update Price by Queue Delay]: Own price updated to %d\n", ownPrice)
+	logger("[Update Price by Queue Delay]: Own price updated to %d\n", ownPrice)
 
 	return nil
 }
@@ -184,7 +184,7 @@ func (pt *PriceTable) UpdatePricebyQueueDelayLog(ctx context.Context) error {
 		adjustment = -1
 	}
 
-	pt.logger(ctx, "[Update Price by Queue Delay]: own price %d, step %d\n", ownPrice, adjustment)
+	logger("[Update Price by Queue Delay]: own price %d, step %d\n", ownPrice, adjustment)
 
 	ownPrice += adjustment
 	// Set reservePrice to the larger of pt.guidePrice and 0
@@ -195,7 +195,7 @@ func (pt *PriceTable) UpdatePricebyQueueDelayLog(ctx context.Context) error {
 	}
 
 	pt.priceTableMap.Store("ownprice", ownPrice)
-	pt.logger(ctx, "[Update Price by Queue Delay]: Own price updated to %d\n", ownPrice)
+	logger("[Update Price by Queue Delay]: Own price updated to %d\n", ownPrice)
 
 	return nil
 }
@@ -224,14 +224,14 @@ func (pt *PriceTable) UpdateDownstreamPrice(ctx context.Context, method string, 
 				methodPrice = methodPrice.(int64) + diff
 				pt.priceTableMap.Store(methodName, methodPrice)
 				// log the downstream price of the request.
-				pt.logger(ctx, "[Updated DS Price]:	The price of %s is now %d\n", methodName, methodPrice)
+				logger("[Updated DS Price]:	The price of %s is now %d\n", methodName, methodPrice)
 			}
 		}
 	}
 
 	// Update the downstream price, but concatenate the method name with node name to distinguish different downstream services calls.
 	pt.priceTableMap.Store(method+"-"+nodeName, downstreamPrice)
-	pt.logger(ctx, "[Received Resp]:	Downstream price of %s updated to %d\n", method+"-"+nodeName, downstreamPrice)
+	logger("[Received Resp]:	Downstream price of %s updated to %d\n", method+"-"+nodeName, downstreamPrice)
 	// pt.SaveDSPrice(ctx, method)
 	return downstreamPrice, nil
 }
