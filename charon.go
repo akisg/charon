@@ -132,13 +132,12 @@ func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName
 		}
 
 		// Take the tokens from the req.
-		var tokenleft int64
-		tokenleft = tokens - ownPrice
+		tokenleft := tokens - ownPrice
 
 		// logger("[Received Req]:	Own price updated to %d\n", ownPrice)
-
 		return tokenleft, nil
 	}
+	return 0, nil
 }
 
 // unaryInterceptor is an example unary interceptor.
