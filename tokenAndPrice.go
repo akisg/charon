@@ -2,6 +2,7 @@ package charon
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -40,8 +41,15 @@ func (pt *PriceTable) SplitTokens(ctx context.Context, tokenleft int64, methodNa
 
 func (pt *PriceTable) RetrieveDSPrice(ctx context.Context, methodName string) (int64, error) {
 	// load the downstream price from the price table with method name as key.
-	downstreamPriceSum_string, _ := pt.priceTableMap.Load(methodName)
-	downstreamPriceSum := downstreamPriceSum_string.(int64)
+	downstreamPriceSum_string, ok := pt.priceTableMap.Load(methodName)
+	if !ok || downstreamPriceSum_string == nil {
+		return 0, errors.New("price not found")
+	}
+
+	downstreamPriceSum, ok := downstreamPriceSum_string.(int64)
+	if !ok {
+		return 0, errors.New("invalid price type")
+	}
 	return downstreamPriceSum, nil
 }
 
@@ -232,11 +240,11 @@ func (pt *PriceTable) UpdateDownstreamPrice(ctx context.Context, method string, 
 		// if the downstream price is not greater than the current downstream price, store it and calculate the max
 		// find the maximum downstream price of the request.
 
-		maxPrice := int(^uint(0) >> 1) // Smallest int value
+		maxPrice := int64(math.MinInt64) // Smallest int64 value
 
 		pt.priceTableMap.Range(func(key, value interface{}) bool {
 			if k, ok := key.(string); ok && strings.HasPrefix(k, method+"-") {
-				if v, valid := value.(int); valid && v > maxPrice {
+				if v, valid := value.(int64); valid && v > maxPrice {
 					maxPrice = v
 				}
 			}
