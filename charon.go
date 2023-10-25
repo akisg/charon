@@ -61,7 +61,7 @@ type PriceTable struct {
 	throughputThreshold int64
 	latencyThreshold    time.Duration
 	priceStep           int64
-	debug               bool
+	priceAggregation    string
 	guidePrice          int64
 }
 
@@ -99,42 +99,52 @@ func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName
 	if !pt.loadShedding {
 		return tokens, nil
 	}
+
 	ownPrice_string, _ := pt.priceTableMap.Load("ownprice")
 	ownPrice := ownPrice_string.(int64)
 	downstreamPrice, _ := pt.RetrieveDSPrice(ctx, methodName)
-	totalPrice := ownPrice + downstreamPrice
-	// totalPrice, _ := pt.RetrieveTotalPrice(ctx, methodName)
 
-	extratoken := tokens - totalPrice
+	if pt.priceAggregation == "maximal" {
+		if tokens > ownPrice && tokens > downstreamPrice {
+			return tokens, nil
+		} else {
+			return 0, InsufficientTokens
+		}
+	} else if pt.priceAggregation == "additive" {
+		totalPrice := ownPrice + downstreamPrice
+		// totalPrice, _ := pt.RetrieveTotalPrice(ctx, methodName)
 
-	logger("[Received Req]:	Total price is %d, ownPrice is %d downstream price is %d\n", totalPrice, ownPrice, downstreamPrice)
+		extratoken := tokens - totalPrice
 
-	if extratoken < 0 {
-		logger("[Received Req]: Request rejected for lack of tokens. ownPrice is %d downstream price is %d\n", ownPrice, downstreamPrice)
-		return 0, InsufficientTokens
+		logger("[Received Req]:	Total price is %d, ownPrice is %d downstream price is %d\n", totalPrice, ownPrice, downstreamPrice)
+
+		if extratoken < 0 {
+			logger("[Received Req]: Request rejected for lack of tokens. ownPrice is %d downstream price is %d\n", ownPrice, downstreamPrice)
+			return 0, InsufficientTokens
+		}
+
+		// I'm thinking about moving it to a separate go routine, and have it run periodically for better performance.
+		// or maybe run it whenever there's a congestion detected, by latency for example.
+		// t.UpdateOwnPrice(ctx, extratoken < 0, tokens, ownPrice)
+
+		if pt.pinpointThroughput {
+			pt.Increment()
+		}
+
+		// Take the tokens from the req.
+		var tokenleft int64
+		tokenleft = tokens - ownPrice
+
+		// logger("[Received Req]:	Own price updated to %d\n", ownPrice)
+
+		return tokenleft, nil
 	}
-
-	// I'm thinking about moving it to a separate go routine, and have it run periodically for better performance.
-	// or maybe run it whenever there's a congestion detected, by latency for example.
-	// t.UpdateOwnPrice(ctx, extratoken < 0, tokens, ownPrice)
-
-	if pt.pinpointThroughput {
-		pt.Increment()
-	}
-
-	// Take the tokens from the req.
-	var tokenleft int64
-	tokenleft = tokens - ownPrice
-
-	// logger("[Received Req]:	Own price updated to %d\n", ownPrice)
-
-	return tokenleft, nil
 }
 
 // unaryInterceptor is an example unary interceptor.
 func (pt *PriceTable) UnaryInterceptorClient(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	// Jiali: the following line print the method name of the req/response, will be used to update the
-	logger("[Before Sub Req]:	Node %s calling Downstream\n", pt.nodeName)
+	// logger("[Before Sub Req]:	Node %s calling Downstream\n", pt.nodeName)
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
 	// overwrite rather than append to the header with the node name of this client
 	ctx = metadata.AppendToOutgoingContext(ctx, "name", pt.nodeName)
@@ -341,25 +351,39 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	// Jiali: overload handler, do AQM, deduct the tokens on the request, update price info
 	var tok int64
 	var err error
-
-	if val, ok := md["tokens-"+pt.nodeName]; ok {
-		logger("[Received Req]:	tokens for %s are %s\n", pt.nodeName, val)
-		// raise error if the val length is not 1
-		if len(val) > 1 {
-			return nil, status.Errorf(codes.InvalidArgument, "duplicated tokens")
-		} else if len(val) == 0 {
-			return nil, errMissingMetadata
+	// if the price are additive, then the tokens are stored in the "tokens" or tokens-nodeName field of the metadata
+	if pt.priceAggregation == "additive" {
+		if val, ok := md["tokens-"+pt.nodeName]; ok {
+			// logger("[Received Req]:	tokens for %s are %s\n", pt.nodeName, val)
+			// raise error if the val length is not 1
+			if len(val) > 1 {
+				return nil, status.Errorf(codes.InvalidArgument, "duplicated tokens")
+			} else if len(val) == 0 {
+				return nil, errMissingMetadata
+			}
+			tok, _ = strconv.ParseInt(val[0], 10, 64)
+		} else {
+			logger("[Received Req]:	tokens are %s\n", md["tokens"])
+			// raise error if the tokens length is not 1
+			if len(md["tokens"]) > 1 {
+				return nil, status.Errorf(codes.InvalidArgument, "duplicated tokens")
+			} else if len(md["tokens"]) == 0 {
+				return nil, errMissingMetadata
+			}
+			tok, _ = strconv.ParseInt(md["tokens"][0], 10, 64)
 		}
-		tok, err = strconv.ParseInt(val[0], 10, 64)
-	} else {
-		logger("[Received Req]:	tokens are %s\n", md["tokens"])
-		// raise error if the tokens length is not 1
-		if len(md["tokens"]) > 1 {
-			return nil, status.Errorf(codes.InvalidArgument, "duplicated tokens")
-		} else if len(md["tokens"]) == 0 {
-			return nil, errMissingMetadata
+	} else if pt.priceAggregation == "maximal" {
+		// if the price are maximal, then the tokens are stored in the "tokens" field of the metadata
+		if val, ok := md["tokens"]; ok {
+			// logger("[Received Req]:	tokens for %s are %s\n", pt.nodeName, val)
+			// raise error if the val length is not 1
+			if len(val) > 1 {
+				return nil, status.Errorf(codes.InvalidArgument, "duplicated tokens")
+			} else if len(val) == 0 {
+				return nil, errMissingMetadata
+			}
+			tok, _ = strconv.ParseInt(val[0], 10, 64)
 		}
-		tok, err = strconv.ParseInt(md["tokens"][0], 10, 64)
 	}
 
 	// overload handler:
@@ -371,8 +395,8 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 		logger("[Sending Error Resp]:	Total price is %s\n", price_string)
 		grpc.SendHeader(ctx, header)
 
-		totalLatency := time.Since(startTime)
-		logger("[Server-side Timer] Processing Duration is: %.2d milliseconds\n", totalLatency.Milliseconds())
+		// totalLatency := time.Since(startTime)
+		// logger("[Server-side Timer] Processing Duration is: %.2d milliseconds\n", totalLatency.Milliseconds())
 
 		// if pt.pinpointLatency {
 		// 	if totalLatency > pt.observedDelay {
@@ -391,14 +415,16 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	// tok_string := strconv.FormatInt(tokenleft, 10)
 	// logger("[Preparing Sub Req]:	Token left is %s\n", tok_string)
 
-	// [critical] Jiali: Being outgoing seems to be critical for us.
-	// Jiali: we need to attach the token info to the context, so that the downstream can retrieve it.
-	// ctx = metadata.AppendToOutgoingContext(ctx, "tokens", tok_string)
-	// Jiali: we actually need multiple kv pairs for the token information, because one context is sent to multiple downstreams.
-	downstreamTokens, _ := pt.SplitTokens(ctx, tokenleft, methodName)
+	if pt.priceAggregation == "additive" {
+		// [critical] Jiali: Being outgoing seems to be critical for us.
+		// Jiali: we need to attach the token info to the context, so that the downstream can retrieve it.
+		// ctx = metadata.AppendToOutgoingContext(ctx, "tokens", tok_string)
+		// Jiali: we actually need multiple kv pairs for the token information, because one context is sent to multiple downstreams.
+		downstreamTokens, _ := pt.SplitTokens(ctx, tokenleft, methodName)
 
-	ctx = metadata.AppendToOutgoingContext(ctx, downstreamTokens...)
+		ctx = metadata.AppendToOutgoingContext(ctx, downstreamTokens...)
 
+	}
 	// queuingDelay := time.Since(startTime)
 	// logger("[Server-side Timer] Queuing delay is: %.2d milliseconds\n", queuingDelay.Milliseconds())
 
@@ -408,16 +434,24 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	// 	pt.observedDelay += queuingDelay
 	// }
 
-	totalLatency := time.Since(startTime)
-	// log the total latency in unit of millisecond, decimal precision 2
-	logger("[Server-side Interceptor] Overhead is: %.2f milliseconds\n", float64(totalLatency.Microseconds())/1000)
+	if pt.pinpointLatency {
+		totalLatency := time.Since(startTime)
+		// log the total latency in unit of millisecond, decimal precision 2
+		logger("[Server-side Interceptor] Overhead is: %.2f milliseconds\n", float64(totalLatency.Microseconds())/1000)
 
+		// if totalLatency > pt.observedDelay {
+		// 	pt.observedDelay = totalLatency // update the observed delay
+		// }
+
+		// change the observed delay to the average latency, first, sum the latency and increment the counter
+		pt.Increment()
+		pt.observedDelay += totalLatency
+	}
 	m, err := handler(ctx, req)
 
 	// Attach the price info to response before sending
 	// right now let's just propagate the corresponding price of the RPC method rather than a whole pricetable.
 	// totalPrice_string, _ := PriceTableInstance.ptmap.Load("totalprice")
-
 	// if not pt.lazyResponse
 	if !pt.lazyResponse {
 		price_string, _ := pt.RetrieveTotalPrice(ctx, methodName)
@@ -426,16 +460,6 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 		grpc.SendHeader(ctx, header)
 	} else {
 		logger("[Preparing Resp]:	Lazy response is enabled, no price attached to response.\n")
-	}
-
-	if pt.pinpointLatency {
-		// if totalLatency > pt.observedDelay {
-		// 	pt.observedDelay = totalLatency // update the observed delay
-		// }
-
-		// change the observed delay to the average latency, first, sum the latency and increment the counter
-		pt.Increment()
-		pt.observedDelay += totalLatency
 	}
 
 	if err != nil {

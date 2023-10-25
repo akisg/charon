@@ -77,9 +77,8 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 		throughputThreshold: 0,
 		latencyThreshold:    time.Duration(0),
 		priceStep:           1,
-		// debug:               false,
-		// debugFreq:           4000,
-		guidePrice: -1,
+		priceAggregation:    "maximal",
+		guidePrice:          -1,
 	}
 
 	// create a new incoming context with the "request-id" as "0"
@@ -216,6 +215,15 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 	if priceStep, ok := options["priceStep"].(int64); ok {
 		priceTable.priceStep = priceStep
 		logger("priceStep		of %s set to %v\n", nodeName, priceStep)
+	}
+
+	if priceAggregation, ok := options["priceAggregation"].(string); ok {
+		// if the priceAggregation is not "maximal" or "additive", then set it to be "maximal"
+		if priceAggregation != "maximal" && priceAggregation != "additive" {
+			priceAggregation = "maximal"
+		}
+		priceTable.priceAggregation = priceAggregation
+		logger("priceAggregation	of %s set to %v\n", nodeName, priceAggregation)
 	}
 
 	if guidePrice, ok := options["guidePrice"].(int64); ok {

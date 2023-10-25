@@ -5,8 +5,6 @@ import (
 	"runtime/metrics"
 	"sync/atomic"
 	"time"
-
-	"google.golang.org/grpc/metadata"
 )
 
 func (pt *PriceTable) Increment() {
@@ -63,7 +61,7 @@ func (pt *PriceTable) queuingCheck() {
 		// medianLatency := medianBucket(&diff)
 		// gapLatency := percentileBucket(&diff, 90)
 
-		ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
+		ctx := context.Background()
 
 		// ToDo: move the print of the histogram to a file
 		/*

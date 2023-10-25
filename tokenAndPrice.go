@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -32,7 +33,7 @@ func (pt *PriceTable) SplitTokens(ctx context.Context, tokenleft int64, methodNa
 		downstreamPrice := downstreamPriceString.(int64)
 		downstreamToken := tokenleftPerDownstream + downstreamPrice
 		downstreamTokens = append(downstreamTokens, "tokens-"+downstreamName, strconv.FormatInt(downstreamToken, 10))
-		logger("[Split tokens]:	token for %s is %d + %d\n", downstreamName, tokenleftPerDownstream, downstreamPrice)
+		// logger("[Split tokens]:	token for %s is %d + %d\n", downstreamName, tokenleftPerDownstream, downstreamPrice)
 	}
 	return downstreamTokens, nil
 }
@@ -44,30 +45,40 @@ func (pt *PriceTable) RetrieveDSPrice(ctx context.Context, methodName string) (i
 	return downstreamPriceSum, nil
 }
 
-// SaveDSPrice saves the downstream price table to the price table. It loops through the downstreamNames and save the downstream price to the price table.
-func (pt *PriceTable) SaveDSPrice(ctx context.Context, methodName string) error {
-	// retrive downstream node name involved in the request from callmap.
-	downstreamNames := pt.callMap[methodName]
-	var downstreamPriceSum int64
-	for _, downstreamName := range downstreamNames {
-		// concatenate the method name with node name to distinguish different downstream services calls.
-		downstreamPrice, _ := pt.priceTableMap.Load(methodName + "-" + downstreamName)
-		logger("[Sum DS Prices]:	The price of %s at %s is %d.\n", methodName, downstreamName, downstreamPrice)
-		// downstreamPrice := downstreamPriceString.(int64)
-		downstreamPriceSum += downstreamPrice.(int64)
-	}
-	// save the downstream price to the price table with method name as key.
-	pt.priceTableMap.Store(methodName, downstreamPriceSum)
-	// log the downstream price of the request.
-	logger("[Updated DS Price]:	Downstream price of %s is now %d\n", methodName, downstreamPriceSum)
-	return nil
-}
+// // SaveDSPrice saves the downstream price table to the price table. It loops through the downstreamNames and save the downstream price to the price table.
+// func (pt *PriceTable) SaveDSPrice(ctx context.Context, methodName string) error {
+// 	// retrive downstream node name involved in the request from callmap.
+// 	downstreamNames := pt.callMap[methodName]
+// 	var downstreamPriceSum int64
+// 	for _, downstreamName := range downstreamNames {
+// 		// concatenate the method name with node name to distinguish different downstream services calls.
+// 		downstreamPrice, _ := pt.priceTableMap.Load(methodName + "-" + downstreamName)
+// 		logger("[Sum DS Prices]:	The price of %s at %s is %d.\n", methodName, downstreamName, downstreamPrice)
+// 		// downstreamPrice := downstreamPriceString.(int64)
+// 		downstreamPriceSum += downstreamPrice.(int64)
+// 	}
+// 	// save the downstream price to the price table with method name as key.
+// 	pt.priceTableMap.Store(methodName, downstreamPriceSum)
+// 	// log the downstream price of the request.
+// 	logger("[Updated DS Price]:	Downstream price of %s is now %d\n", methodName, downstreamPriceSum)
+// 	return nil
+// }
 
 func (pt *PriceTable) RetrieveTotalPrice(ctx context.Context, methodName string) (string, error) {
 	ownPrice_string, _ := pt.priceTableMap.Load("ownprice")
 	ownPrice := ownPrice_string.(int64)
 	downstreamPrice, _ := pt.RetrieveDSPrice(ctx, methodName)
-	totalPrice := ownPrice + downstreamPrice
+	var totalPrice int64
+	if pt.priceAggregation == "maximal" {
+		// totalPrice is the max of ownPrice and downstreamPrice
+		if ownPrice > downstreamPrice {
+			totalPrice = ownPrice
+		} else {
+			totalPrice = downstreamPrice
+		}
+	} else if pt.priceAggregation == "additive" {
+		totalPrice = ownPrice + downstreamPrice
+	}
 	price_string := strconv.FormatInt(totalPrice, 10)
 	logger("[Retrieve Total Price]:	Downstream price of %s is now %d, total price %d \n", methodName, downstreamPrice, totalPrice)
 	return price_string, nil
@@ -202,36 +213,70 @@ func (pt *PriceTable) UpdatePricebyQueueDelayLog(ctx context.Context) error {
 
 // UpdateDownstreamPrice incorperates the downstream price table to its own price table.
 func (pt *PriceTable) UpdateDownstreamPrice(ctx context.Context, method string, nodeName string, downstreamPrice int64) (int64, error) {
-	// load the downstream price from the price table with method + node name as key.
-	downstreamPrice_old, loaded := pt.priceTableMap.Swap(method+"-"+nodeName, downstreamPrice)
-	if !loaded {
-		// raise an error if the downstream price is not loaded.
-		return 0, status.Errorf(codes.Aborted, fmt.Sprintf("Downstream price of %s is not loaded", method+"-"+nodeName))
-	}
-	// calculate the new diff between the old downstream price and the new downstream price.
-	diff := downstreamPrice - downstreamPrice_old.(int64)
-	// if the diff is 0, return 0
-	if diff == 0 {
-		return 0, nil
-	}
-	// apply the diff to the all methods' whenever the downstream price is part of the method call.
-	for methodName, downstreamNames := range pt.callMap {
-		for _, downstreamName := range downstreamNames {
-			if downstreamName == nodeName {
-				// increase the downstream price of the method by the diff.
-				// load the downstream price from the price table with method name as key. then update the downstream price. then save it back to the price table.
-				methodPrice, _ := pt.priceTableMap.Load(methodName)
-				methodPrice = methodPrice.(int64) + diff
-				pt.priceTableMap.Store(methodName, methodPrice)
-				// log the downstream price of the request.
-				logger("[Updated DS Price]:	The price of %s is now %d\n", methodName, methodPrice)
+	if pt.priceAggregation == "maximal" {
+		// Update the downstream price, but concatenate the method name with node name to distinguish different downstream services calls.
+		pt.priceTableMap.Store(method+"-"+nodeName, downstreamPrice)
+		logger("[Received Resp]:	Downstream price of %s updated to %d\n", method+"-"+nodeName, downstreamPrice)
+		// if the downstream price is greater than the current downstream price, update the downstream price.
+		downstreamPrice_old, loaded := pt.priceTableMap.Load(method)
+		if !loaded {
+			// raise an error if the downstream price is not loaded.
+			return 0, status.Errorf(codes.Aborted, fmt.Sprintf("Downstream price of %s is not loaded", method+"-"+nodeName))
+		}
+		if downstreamPrice > downstreamPrice_old.(int64) {
+			// update the downstream price
+			pt.priceTableMap.Store(method, downstreamPrice)
+			logger("[Received Resp]:	Downstream price of %s updated to %d\n", method, downstreamPrice)
+			return downstreamPrice, nil
+		}
+		// if the downstream price is not greater than the current downstream price, store it and calculate the max
+		// find the maximum downstream price of the request.
+
+		maxPrice := int(^uint(0) >> 1) // Smallest int value
+
+		pt.priceTableMap.Range(func(key, value interface{}) bool {
+			if k, ok := key.(string); ok && strings.HasPrefix(k, method+"-") {
+				if v, valid := value.(int); valid && v > maxPrice {
+					maxPrice = v
+				}
+			}
+			return true
+		})
+		// update the downstream price only for the method involved in the request.
+		pt.priceTableMap.Store(method, maxPrice)
+
+	} else if pt.priceAggregation == "additive" {
+		// load the downstream price from the price table with method + node name as key.
+		downstreamPrice_old, loaded := pt.priceTableMap.Swap(method+"-"+nodeName, downstreamPrice)
+		if !loaded {
+			// raise an error if the downstream price is not loaded.
+			return 0, status.Errorf(codes.Aborted, fmt.Sprintf("Downstream price of %s is not loaded", method+"-"+nodeName))
+		}
+		// calculate the new diff between the old downstream price and the new downstream price.
+		diff := downstreamPrice - downstreamPrice_old.(int64)
+		// if the diff is 0, return 0
+		if diff == 0 {
+			return 0, nil
+		}
+		// apply the diff to the all methods' whenever the downstream price is part of the method call.
+		for methodName, downstreamNames := range pt.callMap {
+			for _, downstreamName := range downstreamNames {
+				if downstreamName == nodeName {
+					// increase the downstream price of the method by the diff.
+					// load the downstream price from the price table with method name as key. then update the downstream price. then save it back to the price table.
+					methodPrice, _ := pt.priceTableMap.Load(methodName)
+					methodPrice = methodPrice.(int64) + diff
+					pt.priceTableMap.Store(methodName, methodPrice)
+					// log the downstream price of the request.
+					logger("[Updated DS Price]:	The price of %s is now %d\n", methodName, methodPrice)
+				}
 			}
 		}
-	}
 
-	// Update the downstream price, but concatenate the method name with node name to distinguish different downstream services calls.
-	pt.priceTableMap.Store(method+"-"+nodeName, downstreamPrice)
-	logger("[Received Resp]:	Downstream price of %s updated to %d\n", method+"-"+nodeName, downstreamPrice)
-	// pt.SaveDSPrice(ctx, method)
+		// Update the downstream price, but concatenate the method name with node name to distinguish different downstream services calls.
+		pt.priceTableMap.Store(method+"-"+nodeName, downstreamPrice)
+		logger("[Received Resp]:	Downstream price of %s updated to %d\n", method+"-"+nodeName, downstreamPrice)
+		// pt.SaveDSPrice(ctx, method)
+	}
 	return downstreamPrice, nil
 }
