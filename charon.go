@@ -146,7 +146,7 @@ func (pt *PriceTable) UnaryInterceptorClient(ctx context.Context, method string,
 	// logger("[Before Sub Req]:	Node %s calling Downstream\n", pt.nodeName)
 	// Jiali: before sending. check the price, calculate the #tokens to add to request, update the total tokens
 	// overwrite rather than append to the header with the node name of this client
-	ctx = metadata.AppendToOutgoingContext(ctx, "name", pt.nodeName)
+	// ctx = metadata.AppendToOutgoingContext(ctx, "name", pt.nodeName)
 	var header metadata.MD // variable to store header and trailer
 	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
 
