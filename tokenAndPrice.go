@@ -41,16 +41,16 @@ func (pt *PriceTable) SplitTokens(ctx context.Context, tokenleft int64, methodNa
 
 func (pt *PriceTable) RetrieveDSPrice(ctx context.Context, methodName string) (int64, error) {
 	// load the downstream price from the price table with method name as key.
-	downstreamPriceSum_string, ok := pt.priceTableMap.Load(methodName)
-	if !ok || downstreamPriceSum_string == nil {
+	downstreamPrice_string, ok := pt.priceTableMap.Load(methodName)
+	if !ok || downstreamPrice_string == nil {
 		return 0, errors.New("price not found")
 	}
 
-	downstreamPriceSum, ok := downstreamPriceSum_string.(int64)
+	downstreamPrice, ok := downstreamPrice_string.(int64)
 	if !ok {
 		return 0, errors.New("invalid price type")
 	}
-	return downstreamPriceSum, nil
+	return downstreamPrice, nil
 }
 
 // // SaveDSPrice saves the downstream price table to the price table. It loops through the downstreamNames and save the downstream price to the price table.

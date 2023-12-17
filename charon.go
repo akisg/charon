@@ -257,7 +257,14 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 			tok = pt.tokensLeft
 		} else if pt.tokenStrategy == "uniform" {
 			// set the tok to be a uniform random number between 0 and tokensLeft
-			tok = rand.Int63n(pt.tokensLeft)
+			if pt.tokensLeft > 0 {
+				// set the tok to be a uniform random number between 0 and tokensLeft-1
+				tok = rand.Int63n(pt.tokensLeft)
+			} else {
+				// Handle the case where tokensLeft is not greater than 0, perhaps set tok to 0 or some default value
+				tok = 0
+				// Log an error or take appropriate action
+			}
 		}
 
 		if !pt.rateLimiting {
@@ -306,16 +313,16 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
 
 	// run the following code asynchorously, without blocking the main thread.
-	// go func() {
-	// Jiali: after replied. update and store the price info for future
-	if len(header["price"]) > 0 {
-		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
-		pt.UpdateDownstreamPrice(ctx, methodName, header["name"][0], priceDownstream)
-		logger("[After Resp]:	The price table is from %s\n", header["name"])
-	} else {
-		logger("[After Resp]:	No price table received\n")
-	}
-	// }()
+	go func() {
+		// Jiali: after replied. update and store the price info for future
+		if len(header["price"]) > 0 {
+			priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
+			pt.UpdateDownstreamPrice(ctx, methodName, header["name"][0], priceDownstream)
+			logger("[After Resp]:	The price table is from %s\n", header["name"])
+		} else {
+			logger("[After Resp]:	No price table received\n")
+		}
+	}()
 	return err
 }
 
@@ -450,7 +457,6 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 
 	// Attach the price info to response before sending
 	// right now let's just propagate the corresponding price of the RPC method rather than a whole pricetable.
-	// totalPrice_string, _ := PriceTableInstance.ptmap.Load("totalprice")
 	// if not pt.lazyResponse
 	if !pt.lazyResponse {
 		price_string, _ := pt.RetrieveTotalPrice(ctx, methodName)
