@@ -253,17 +253,14 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 			return status.Errorf(codes.DeadlineExceeded, "Client timeout waiting for tokens.")
 		}
 		// right now let's assume that client uses all the tokens on her next request.
-		if pt.tokenStrategy == "all" {
-			tok = pt.tokensLeft
-		} else if pt.tokenStrategy == "uniform" {
+		// if pt.tokenStrategy == "all" {
+		tok = pt.GetTokensLeft()
+		// } else
+		if pt.tokenStrategy == "uniform" {
 			// set the tok to be a uniform random number between 0 and tokensLeft
-			if pt.tokensLeft > 0 {
+			if tok > 0 {
 				// set the tok to be a uniform random number between 0 and tokensLeft-1
-				tok = rand.Int63n(pt.tokensLeft)
-			} else {
-				// Handle the case where tokensLeft is not greater than 0, perhaps set tok to 0 or some default value
-				tok = 0
-				// Log an error or take appropriate action
+				tok = rand.Int63n(tok)
 			}
 		}
 
@@ -300,9 +297,26 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 		} else {
 			break
 		}
+
+		if pt.DeductTokens(tok) {
+			logger("[Prepare Req]:	%d tokens deducted from client.\n", tok)
+			break
+		} else {
+			logger("[Prepare Req]:	not enough tokens left for tok %d, no tokens deducted from client.\n", tok)
+			if !pt.rateLimitWaiting {
+				logger("[Rate Limited]:	Client is rate limited, req dropped without waiting.\n")
+				if pt.invokeAfterRL {
+					opts = append(opts, grpc.MaxCallSendMsgSize(0))
+					_ = invoker(ctx, method, req, reply, cc, opts...)
+				}
+				return status.Error(codes.ResourceExhausted, "Client is rate limited, req dropped without waiting.")
+			}
+			<-pt.rateLimiter
+			logger("[Rate Limited]:	Client has been rate limited for %d ms, %d ms left until timeout.\n",
+				time.Since(startTime).Milliseconds(), (pt.clientTimeOut - time.Since(startTime)).Milliseconds())
+		}
 	}
 
-	pt.tokensLeft -= tok
 	tok_string := strconv.FormatInt(tok, 10)
 	ctx = metadata.AppendToOutgoingContext(ctx, "tokens", tok_string, "name", pt.nodeName)
 

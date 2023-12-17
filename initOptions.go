@@ -3,6 +3,7 @@ package charon
 import (
 	"math/rand"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -258,6 +259,31 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 	return priceTable
 }
 
+// Atomic read of tokensLeft
+func (pt *PriceTable) GetTokensLeft() int64 {
+	return atomic.LoadInt64(&pt.tokensLeft)
+}
+
+// Atomic deduction of tokens
+func (pt *PriceTable) DeductTokens(n int64) bool {
+	for {
+		currentTokens := pt.GetTokensLeft()
+		newTokens := currentTokens - n
+		if newTokens < 0 {
+			// Unsuccessful deduction, handle as needed
+			return false
+		}
+		if atomic.CompareAndSwapInt64(&pt.tokensLeft, currentTokens, newTokens) {
+			return true
+		}
+	}
+}
+
+// Atomic addition of tokens
+func (pt *PriceTable) AddTokens(n int64) {
+	atomic.AddInt64(&pt.tokensLeft, n)
+}
+
 // tokenRefill is a goroutine that refills the tokens in the price table.
 func (pt *PriceTable) tokenRefill(tokenRefillDist string, tokenUpdateStep int64, tokenUpdateRate time.Duration) {
 	if tokenRefillDist == "poisson" {
@@ -270,7 +296,7 @@ func (pt *PriceTable) tokenRefill(tokenRefillDist string, tokenUpdateStep int64,
 		for range ticker.C {
 			// Add tokens to the client deterministically or randomly, depending on the tokenRefillDist
 			// if pt.tokenRefillDist == "fixed" {
-			pt.tokensLeft += tokenUpdateStep
+			pt.AddTokens(tokenUpdateStep)
 			// }
 
 			pt.lastUpdateTime = time.Now()
@@ -283,9 +309,9 @@ func (pt *PriceTable) tokenRefill(tokenRefillDist string, tokenUpdateStep int64,
 		for range time.Tick(tokenUpdateRate) {
 			// add tokens to the client deterministically or randomly, depending on the tokenRefillDist
 			if tokenRefillDist == "fixed" {
-				pt.tokensLeft += tokenUpdateStep
+				pt.AddTokens(tokenUpdateStep)
 			} else if tokenRefillDist == "uniform" {
-				pt.tokensLeft += rand.Int63n(tokenUpdateStep * 2)
+				pt.AddTokens(rand.Int63n(tokenUpdateStep * 2))
 			}
 
 			pt.lastUpdateTime = time.Now()
