@@ -5,12 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"math/rand"
 
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/bytedance/gopkg/lang/fastrand"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -259,7 +259,7 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 			// set the tok to be a uniform random number between 0 and tokensLeft
 			if tok > 0 {
 				// set the tok to be a uniform random number between 0 and tokensLeft-1
-				tok = rand.Int63n(tok)
+				tok = fastrand.Int63n(tok)
 			}
 		}
 

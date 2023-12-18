@@ -8,6 +8,7 @@ require (
 )
 
 require (
+	github.com/bytedance/gopkg v0.0.0-20230728082804-614d0af6619b // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	golang.org/x/net v0.14.0 // indirect
 	golang.org/x/sys v0.11.0 // indirect
