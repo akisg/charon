@@ -23,7 +23,7 @@ var (
 	RateLimited        = errors.New("Insufficient tokens to send, trigger rate limit.")
 	errMissingMetadata = status.Errorf(codes.InvalidArgument, "missing metadata")
 	debug              = false
-	// debugFreq          = int64(1)
+	atomicTokens       = false
 )
 
 // PriceTable implements the Charon price table
@@ -151,18 +151,18 @@ func (pt *PriceTable) UnaryInterceptorClient(ctx context.Context, method string,
 	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
 
 	// run the following code asynchorously, without blocking the main thread.
-	// go func() {
-	// Jiali: after replied. update and store the price info for future
-	if len(header["price"]) > 0 {
-		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
-		md, _ := metadata.FromOutgoingContext(ctx)
-		methodName := md["method"][0]
-		pt.UpdateDownstreamPrice(ctx, methodName, header["name"][0], priceDownstream)
-		logger("[After Resp]:	The price table is from %s\n", header["name"])
-	} else {
-		logger("[After Resp]:	No price table received\n")
-	}
-	// }()
+	go func() {
+		// Jiali: after replied. update and store the price info for future
+		if len(header["price"]) > 0 {
+			priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
+			md, _ := metadata.FromOutgoingContext(ctx)
+			methodName := md["method"][0]
+			pt.UpdateDownstreamPrice(ctx, methodName, header["name"][0], priceDownstream)
+			logger("[After Resp]:	The price table is from %s\n", header["name"])
+		} else {
+			logger("[After Resp]:	No price table received\n")
+		}
+	}()
 
 	return err
 }
@@ -185,10 +185,9 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 	}
 
 	methodName := md["method"][0]
-	logger("[Before Req]:	Node %s calling %s\n", pt.nodeName, methodName)
 	// print all the k-v pairs in the metadata md
-	// logger("[Received Req]:	The sender's name for request is %s\n", md["name"])
 	if debug {
+		logger("[Before Req]:	Node %s calling %s\n", pt.nodeName, methodName)
 		var metadataLog string
 		for k, v := range md {
 			metadataLog += fmt.Sprintf("%s: %s, ", k, v)

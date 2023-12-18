@@ -261,11 +261,22 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 
 // Atomic read of tokensLeft
 func (pt *PriceTable) GetTokensLeft() int64 {
+	if !atomicTokens {
+		return pt.tokensLeft
+	}
 	return atomic.LoadInt64(&pt.tokensLeft)
 }
 
 // Atomic deduction of tokens
 func (pt *PriceTable) DeductTokens(n int64) bool {
+	if !atomicTokens {
+		if pt.tokensLeft-n < 0 {
+			return false
+		} else {
+			pt.tokensLeft -= n
+			return true
+		}
+	}
 	for {
 		currentTokens := pt.GetTokensLeft()
 		newTokens := currentTokens - n
@@ -281,6 +292,10 @@ func (pt *PriceTable) DeductTokens(n int64) bool {
 
 // Atomic addition of tokens
 func (pt *PriceTable) AddTokens(n int64) {
+	if !atomicTokens {
+		pt.tokensLeft += n
+		return
+	}
 	atomic.AddInt64(&pt.tokensLeft, n)
 }
 
@@ -299,8 +314,10 @@ func (pt *PriceTable) tokenRefill(tokenRefillDist string, tokenUpdateStep int64,
 			pt.AddTokens(tokenUpdateStep)
 			// }
 
-			pt.lastUpdateTime = time.Now()
-			pt.unblockRateLimiter()
+			if pt.rateLimitWaiting {
+				pt.lastUpdateTime = time.Now()
+				pt.unblockRateLimiter()
+			}
 
 			// Adjust the tick duration based on the exponential distribution
 			ticker.Reset(pt.nextTokenUpdateInterval(lambda))
@@ -313,9 +330,10 @@ func (pt *PriceTable) tokenRefill(tokenRefillDist string, tokenUpdateStep int64,
 			} else if tokenRefillDist == "uniform" {
 				pt.AddTokens(rand.Int63n(tokenUpdateStep * 2))
 			}
-
-			pt.lastUpdateTime = time.Now()
-			pt.unblockRateLimiter()
+			if pt.rateLimitWaiting {
+				pt.lastUpdateTime = time.Now()
+				pt.unblockRateLimiter()
+			}
 			// ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
 			// logger("[TokenRefill]: Tokens refilled. Tokens left: %d\n", pt.tokensLeft)
 		}
