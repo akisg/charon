@@ -319,14 +319,14 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 	tok_string := strconv.FormatInt(tok, 10)
 	ctx = metadata.AppendToOutgoingContext(ctx, "tokens", tok_string, "name", pt.nodeName)
 
-	// check the timer and log the overhead of intercepting
-	logger("[Enduser Interceptor Overhead]:	 %.2f milliseconds\n", float64(time.Since(interceptorStartTime).Microseconds())/1000)
-
 	var header metadata.MD // variable to store header and trailer
 	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
 
 	// run the following code asynchorously, without blocking the main thread.
 	go func() {
+		// check the timer and log the overhead of intercepting
+		logger("[Enduser Interceptor Overhead]:	 %.2f milliseconds\n", float64(time.Since(interceptorStartTime).Microseconds())/1000)
+
 		// Jiali: after replied. update and store the price info for future
 		if len(header["price"]) > 0 {
 			priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
