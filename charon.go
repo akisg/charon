@@ -93,11 +93,12 @@ func (pt *PriceTable) RateLimiting(ctx context.Context, tokens int64, methodName
 // LoadShedding takes tokens from the request according to the price table,
 // then it updates the price table according to the tokens on the req.
 // It returns #token left from ownprice, and a nil error if the request has sufficient amount of tokens.
+// and the total price of the request.
 // It returns ErrLimitExhausted if the amount of available tokens is less than requested.
-func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName string) (int64, error) {
+func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName string) (int64, string, error) {
 	// if pt.loadShedding is false, then return tokens and nil error
 	if !pt.loadShedding {
-		return tokens, nil
+		return tokens, pt.RetrieveTotalPrice(ctx, methodName), nil
 	}
 
 	ownPrice_string, _ := pt.priceTableMap.Load("ownprice")
@@ -105,10 +106,14 @@ func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName
 	downstreamPrice, _ := pt.RetrieveDSPrice(ctx, methodName)
 
 	if pt.priceAggregation == "maximal" {
-		if tokens > ownPrice && tokens > downstreamPrice {
-			return tokens, nil
+		// take the max of ownPrice and downstreamPrice
+		if ownPrice < downstreamPrice {
+			ownPrice = downstreamPrice
+		}
+		if tokens >= ownPrice {
+			return tokens - ownPrice, strconv.FormatInt(ownPrice, 10), nil
 		} else {
-			return 0, InsufficientTokens
+			return 0, strconv.FormatInt(ownPrice, 10), InsufficientTokens
 		}
 	} else if pt.priceAggregation == "additive" {
 		totalPrice := ownPrice + downstreamPrice
@@ -120,7 +125,7 @@ func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName
 
 		if extratoken < 0 {
 			logger("[Received Req]: Request rejected for lack of tokens. ownPrice is %d downstream price is %d\n", ownPrice, downstreamPrice)
-			return 0, InsufficientTokens
+			return 0, strconv.FormatInt(totalPrice, 10), InsufficientTokens
 		}
 
 		// I'm thinking about moving it to a separate go routine, and have it run periodically for better performance.
@@ -135,9 +140,10 @@ func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName
 		tokenleft := tokens - ownPrice
 
 		// logger("[Received Req]:	Own price updated to %d\n", ownPrice)
-		return tokenleft, nil
+		return tokenleft, strconv.FormatInt(totalPrice, 10), nil
 	}
-	return 0, nil
+	// raise error if the price aggregation is not supported
+	return 0, "", status.Error(codes.Unimplemented, "price aggregation method not supported")
 }
 
 // unaryInterceptor is an example unary interceptor.
@@ -151,33 +157,26 @@ func (pt *PriceTable) UnaryInterceptorClient(ctx context.Context, method string,
 	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
 
 	// run the following code asynchorously, without blocking the main thread.
-	go func() {
-		// Jiali: after replied. update and store the price info for future
-		if len(header["price"]) > 0 {
-			priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
-			md, _ := metadata.FromOutgoingContext(ctx)
-			methodName := md["method"][0]
-			pt.UpdateDownstreamPrice(ctx, methodName, header["name"][0], priceDownstream)
-			logger("[After Resp]:	The price table is from %s\n", header["name"])
-		} else {
-			logger("[After Resp]:	No price table received\n")
-		}
-	}()
+	// go func() {
+	// Jiali: after replied. update and store the price info for future
+	if len(header["price"]) > 0 {
+		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
+		md, _ := metadata.FromOutgoingContext(ctx)
+		methodName := md["method"][0]
+		pt.UpdateDownstreamPrice(ctx, methodName, header["name"][0], priceDownstream)
+		logger("[After Resp]:	The price table is from %s\n", header["name"])
+	} else {
+		logger("[After Resp]:	No price table received\n")
+	}
+	// }()
 
 	return err
 }
 
 // unaryInterceptor is an example unary interceptor.
 func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-	// go func() {
-	// 	log.Println(http.ListenAndServe("localhost:6060", nil))
-	// }()
-	// f, _ := os.Create(`cpu.prof`)
-	// p := pprof.StartCPUProfile(f)
-	// defer pprof.StopCPUProfile(p)
-
 	// timer the intereceptor overhead
-	interceptorStartTime := time.Now()
+	// interceptorStartTime := time.Now()
 
 	md, ok := metadata.FromOutgoingContext(ctx)
 	if !ok {
@@ -323,19 +322,18 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
 
 	// run the following code asynchorously, without blocking the main thread.
-	go func() {
-		// check the timer and log the overhead of intercepting
-		logger("[Enduser Interceptor Overhead]:	 %.2f milliseconds\n", float64(time.Since(interceptorStartTime).Microseconds())/1000)
-
-		// Jiali: after replied. update and store the price info for future
-		if len(header["price"]) > 0 {
-			priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
-			pt.UpdateDownstreamPrice(ctx, methodName, header["name"][0], priceDownstream)
-			logger("[After Resp]:	The price table is from %s\n", header["name"])
-		} else {
-			logger("[After Resp]:	No price table received\n")
-		}
-	}()
+	// go func() {
+	// check the timer and log the overhead of intercepting
+	// logger("[Enduser Interceptor Overhead]:	 %.2f milliseconds\n", float64(time.Since(interceptorStartTime).Microseconds())/1000)
+	// Jiali: after replied. update and store the price info for future
+	if len(header["price"]) > 0 {
+		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
+		pt.UpdateDownstreamPrice(ctx, methodName, header["name"][0], priceDownstream)
+		logger("[After Resp]:	The price table is from %s\n", header["name"])
+	} else {
+		logger("[After Resp]:	No price table received\n")
+	}
+	// }()
 	return err
 }
 
@@ -407,9 +405,9 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 
 	// overload handler:
 	methodName := md["method"][0]
-	tokenleft, err := pt.LoadShedding(ctx, tok, methodName)
+	tokenleft, price_string, err := pt.LoadShedding(ctx, tok, methodName)
 	if err == InsufficientTokens && pt.loadShedding {
-		price_string, _ := pt.RetrieveTotalPrice(ctx, methodName)
+		// price_string, _ := pt.RetrieveTotalPrice(ctx, methodName)
 		header := metadata.Pairs("price", price_string, "name", pt.nodeName)
 		logger("[Sending Error Resp]:	Total price is %s\n", price_string)
 		grpc.SendHeader(ctx, header)
@@ -470,9 +468,9 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 
 	// Attach the price info to response before sending
 	// right now let's just propagate the corresponding price of the RPC method rather than a whole pricetable.
-	// if not pt.lazyResponse
-	if !pt.lazyResponse {
-		price_string, _ := pt.RetrieveTotalPrice(ctx, methodName)
+	// if not pt.lazyResponse or if pt.lazyResponse is true but the tokenleft is smaller than
+	if !pt.lazyResponse || tokenleft*10 < tok {
+		// price_string, _ := pt.RetrieveTotalPrice(ctx, methodName)
 		header := metadata.Pairs("price", price_string, "name", pt.nodeName)
 		logger("[Preparing Resp]:	Total price of %s is %s\n", methodName, price_string)
 		grpc.SendHeader(ctx, header)
