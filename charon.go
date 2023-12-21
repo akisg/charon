@@ -98,7 +98,8 @@ func (pt *PriceTable) RateLimiting(ctx context.Context, tokens int64, methodName
 func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName string) (int64, string, error) {
 	// if pt.loadShedding is false, then return tokens and nil error
 	if !pt.loadShedding {
-		return tokens, pt.RetrieveTotalPrice(ctx, methodName), nil
+		totalPrice, _ := pt.RetrieveTotalPrice(ctx, methodName)
+		return tokens, totalPrice, nil
 	}
 
 	ownPrice_string, _ := pt.priceTableMap.Load("ownprice")
