@@ -345,7 +345,6 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 
 func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	// This is the server side interceptor, it should check tokens, update price, do overload handling and attach price to response
-	startTime := time.Now()
 
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
@@ -413,15 +412,6 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 		logger("[Sending Error Resp]:	Total price is %s\n", price_string)
 		grpc.SendHeader(ctx, header)
 
-		// totalLatency := time.Since(startTime)
-		// logger("[Server-side Timer] Processing Duration is: %.2d milliseconds\n", totalLatency.Milliseconds())
-
-		// if pt.pinpointLatency {
-		// 	if totalLatency > pt.observedDelay {
-		// 		pt.observedDelay = totalLatency // update the observed delay
-		// 	}
-		// }
-		// return nil, status.Errorf(codes.ResourceExhausted, "req dropped, try again later")
 		return nil, status.Errorf(codes.ResourceExhausted, "%s req dropped by %s. Try again later.", methodName, pt.nodeName)
 	}
 	if err != nil && err != InsufficientTokens {
@@ -429,10 +419,6 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 		log.Println(err)
 		return nil, status.Error(codes.Internal, "internal error")
 	}
-
-	// tok_string := strconv.FormatInt(tokenleft, 10)
-	// logger("[Preparing Sub Req]:	Token left is %s\n", tok_string)
-
 	if pt.priceAggregation == "additive" {
 		// [critical] Jiali: Being outgoing seems to be critical for us.
 		// Jiali: we need to attach the token info to the context, so that the downstream can retrieve it.
@@ -443,28 +429,7 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 		ctx = metadata.AppendToOutgoingContext(ctx, downstreamTokens...)
 
 	}
-	// queuingDelay := time.Since(startTime)
-	// logger("[Server-side Timer] Queuing delay is: %.2d milliseconds\n", queuingDelay.Milliseconds())
 
-	// if pt.pinpointQueuing {
-	// 	// increment the counter and add the queuing delay to the observed delay
-	// 	pt.Increment()
-	// 	pt.observedDelay += queuingDelay
-	// }
-
-	if pt.pinpointLatency {
-		totalLatency := time.Since(startTime)
-		// log the total latency in unit of millisecond, decimal precision 2
-		logger("[Server-side Interceptor] Overhead is: %.2f milliseconds\n", float64(totalLatency.Microseconds())/1000)
-
-		// if totalLatency > pt.observedDelay {
-		// 	pt.observedDelay = totalLatency // update the observed delay
-		// }
-
-		// change the observed delay to the average latency, first, sum the latency and increment the counter
-		pt.Increment()
-		pt.observedDelay += totalLatency
-	}
 	m, err := handler(ctx, req)
 
 	// Attach the price info to response before sending
@@ -484,39 +449,3 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	}
 	return m, err
 }
-
-/*
-// wrappedStream wraps around the embedded grpc.ServerStream, and intercepts the RecvMsg and
-// SendMsg method call.
-type wrappedStream struct {
-	grpc.ServerStream
-}
-
-func (w *wrappedStream) RecvMsg(m interface{}) error {
-	logger("Receive a message (Type: %T) at %s", m, time.Now().Format(time.RFC3339))
-	return w.ServerStream.RecvMsg(m)
-}
-
-func (w *wrappedStream) SendMsg(m interface{}) error {
-	logger("Send a message (Type: %T) at %v", m, time.Now().Format(time.RFC3339))
-	return w.ServerStream.SendMsg(m)
-}
-
-func newWrappedStream(s grpc.ServerStream) grpc.ServerStream {
-	return &wrappedStream{s}
-}
-
-func StreamInterceptor(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-	// authentication (token verification)
-	_, ok := metadata.FromIncomingContext(ss.Context())
-	if !ok {
-		return errMissingMetadata
-	}
-
-	err := handler(srv, newWrappedStream(ss))
-	if err != nil {
-		logger("RPC failed with error %v", err)
-	}
-	return err
-}
-*/
