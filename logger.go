@@ -12,3 +12,10 @@ func logger(format string, a ...interface{}) {
 		fmt.Printf("LOG: "+timestamp+"|\t"+format+"\n", a...)
 	}
 }
+
+func recordPrice(format string, a ...interface{}) {
+	if trackPrice {
+		timestamp := time.Now().Format("2006-01-02T15:04:05.999999999-07:00")
+		fmt.Printf("LOG: "+timestamp+"|\t"+format+"\n", a...)
+	}
+}

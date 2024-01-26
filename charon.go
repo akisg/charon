@@ -24,6 +24,7 @@ var (
 	errMissingMetadata = status.Errorf(codes.InvalidArgument, "missing metadata")
 	debug              = false
 	atomicTokens       = false
+	trackPrice         = false
 )
 
 // PriceTable implements the Charon price table
@@ -140,7 +141,6 @@ func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName
 		// Take the tokens from the req.
 		tokenleft := tokens - ownPrice
 
-		// logger("[Received Req]:	Own price updated to %d\n", ownPrice)
 		return tokenleft, strconv.FormatInt(totalPrice, 10), nil
 	}
 	// raise error if the price aggregation is not supported

@@ -89,6 +89,10 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 		debug = debugOpt
 	}
 
+	if trackingPrice, ok := options["recordPrice"].(bool); ok {
+		trackPrice = trackingPrice
+	}
+
 	// if debugFreq, ok := options["debugFreq"].(int64); ok {
 	// 	priceTable.debugFreq = debugFreq
 	// 	// print the debug and debugFreq of the node if the name is not client
@@ -315,7 +319,7 @@ func (pt *PriceTable) tokenRefill(tokenRefillDist string, tokenUpdateStep int64,
 			// }
 
 			if pt.rateLimitWaiting {
-				pt.lastUpdateTime = time.Now()
+				// pt.lastUpdateTime = time.Now()
 				pt.unblockRateLimiter()
 			}
 
@@ -331,7 +335,7 @@ func (pt *PriceTable) tokenRefill(tokenRefillDist string, tokenUpdateStep int64,
 				pt.AddTokens(rand.Int63n(tokenUpdateStep * 2))
 			}
 			if pt.rateLimitWaiting {
-				pt.lastUpdateTime = time.Now()
+				// pt.lastUpdateTime = time.Now()
 				pt.unblockRateLimiter()
 			}
 			// ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))

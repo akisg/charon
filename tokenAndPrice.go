@@ -7,6 +7,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -150,7 +151,11 @@ func (pt *PriceTable) UpdatePricebyQueueDelay(ctx context.Context) error {
 	}
 
 	pt.priceTableMap.Store("ownprice", ownPrice)
-	logger("[Update Price by Queue Delay]: Own price updated to %d\n", ownPrice)
+	// run the following code every 200 milliseconds
+	if pt.lastUpdateTime.Add(200 * time.Millisecond).Before(time.Now()) {
+		recordPrice("[Update Price by Queue Delay]: Own price updated to %d\n", ownPrice)
+		pt.lastUpdateTime = time.Now()
+	}
 
 	return nil
 }
