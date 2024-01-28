@@ -154,6 +154,7 @@ func (pt *PriceTable) UpdatePricebyQueueDelay(ctx context.Context) error {
 	// run the following code every 200 milliseconds
 	if pt.lastUpdateTime.Add(200 * time.Millisecond).Before(time.Now()) {
 		recordPrice("[Update Price by Queue Delay]: Own price updated to %d\n", ownPrice)
+		recordPrice("[Incremental Waiting Time Maximum]:	%f ms.\n", gapLatency)
 		pt.lastUpdateTime = time.Now()
 	}
 
