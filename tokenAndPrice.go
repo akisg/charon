@@ -114,18 +114,20 @@ func (pt *PriceTable) UpdateOwnPrice(congestion bool) error {
 }
 
 func (pt *PriceTable) calculatePriceAdjustment(diff int64) int64 {
-	if diff > 0 {
-		// Use a non-linear adjustment: larger adjustment for larger differences
-		adjustment := int64(diff * pt.priceStep / 10000)
-		// if adjustment > pt.priceStep {
-		// 	return pt.priceStep
-		// }
-		return adjustment
-	} else if 2*diff < -pt.latencyThreshold.Microseconds() {
-		return -1
-	} else {
-		return 0
-	}
+	// if diff > 0 {
+	// 	// Use a non-linear adjustment: larger adjustment for larger differences
+	// 	adjustment := int64(diff * pt.priceStep / 10000)
+	// 	// if adjustment > pt.priceStep {
+	// 	// 	return pt.priceStep
+	// 	// }
+	// 	return adjustment
+	// } else if 2*diff < -pt.latencyThreshold.Microseconds() {
+	// 	return -1
+	// } else {
+	// 	return 0
+	// }
+	adjustment := int64(diff * pt.priceStep / 10000)
+	return adjustment
 }
 
 // UpdatePricebyQueueDelay incorperates the queue delay to its own price steps. Thus, the price step is not linear.
@@ -136,7 +138,6 @@ func (pt *PriceTable) UpdatePricebyQueueDelay(ctx context.Context) error {
 	// read the gapLatency from context ctx
 	gapLatency := ctx.Value("gapLatency").(float64)
 	// Calculate the priceStep as a fraction of the difference between gapLatency and latencyThreshold
-
 	diff := int64(gapLatency*1000) - pt.latencyThreshold.Microseconds()
 	adjustment := pt.calculatePriceAdjustment(diff)
 
