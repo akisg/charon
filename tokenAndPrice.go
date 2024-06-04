@@ -114,18 +114,19 @@ func (pt *PriceTable) UpdateOwnPrice(congestion bool) error {
 }
 
 func (pt *PriceTable) calculatePriceAdjustment(diff int64) int64 {
-	// if diff > 0 {
-	// 	// Use a non-linear adjustment: larger adjustment for larger differences
-	// 	adjustment := int64(diff * pt.priceStep / 10000)
-	// 	// if adjustment > pt.priceStep {
-	// 	// 	return pt.priceStep
-	// 	// }
-	// 	return adjustment
-	// } else if 2*diff < -pt.latencyThreshold.Microseconds() {
-	// 	return -1
-	// } else {
-	// 	return 0
-	// }
+	if diff > 0 {
+		// Use a non-linear adjustment: larger adjustment for larger differences
+		adjustment := int64(diff * pt.priceStep / 10000)
+		return adjustment
+	} else if 2*diff < -pt.latencyThreshold.Microseconds() {
+		return -1
+	} else {
+		return 0
+	}
+}
+
+// The following functions are used to update the price table based on the queue delay, linearly and return adjustment any way.
+func (pt *PriceTable) calculatePriceAdjustmentLinear(diff int64) int64 {
 	adjustment := int64(diff * pt.priceStep / 10000)
 	return adjustment
 }
@@ -140,6 +141,38 @@ func (pt *PriceTable) UpdatePricebyQueueDelay(ctx context.Context) error {
 	// Calculate the priceStep as a fraction of the difference between gapLatency and latencyThreshold
 	diff := int64(gapLatency*1000) - pt.latencyThreshold.Microseconds()
 	adjustment := pt.calculatePriceAdjustment(diff)
+
+	logger("[Update Price by Queue Delay]: Own price %d, step %d\n", ownPrice, adjustment)
+
+	ownPrice += adjustment
+	// Set reservePrice to the larger of pt.guidePrice and 0
+	reservePrice := int64(math.Max(float64(pt.guidePrice), 0))
+
+	if ownPrice <= reservePrice {
+		ownPrice = reservePrice
+	}
+
+	pt.priceTableMap.Store("ownprice", ownPrice)
+	// run the following code every 200 milliseconds
+	if pt.lastUpdateTime.Add(200 * time.Millisecond).Before(time.Now()) {
+		recordPrice("[Update Price by Queue Delay]: Own price updated to %d\n", ownPrice)
+		recordPrice("[Incremental Waiting Time Maximum]:	%f ms.\n", gapLatency)
+		pt.lastUpdateTime = time.Now()
+	}
+
+	return nil
+}
+
+// UpdatePricebyQueueDelay incorperates the queue delay to its own price steps. Thus, the price step is not linear.
+func (pt *PriceTable) UpdatePricebyQueueDelayLinear(ctx context.Context) error {
+	ownPrice_string, _ := pt.priceTableMap.Load("ownprice")
+	ownPrice := ownPrice_string.(int64)
+
+	// read the gapLatency from context ctx
+	gapLatency := ctx.Value("gapLatency").(float64)
+	// Calculate the priceStep as a fraction of the difference between gapLatency and latencyThreshold
+	diff := int64(gapLatency*1000) - pt.latencyThreshold.Microseconds()
+	adjustment := pt.calculatePriceAdjustmentLinear(diff)
 
 	logger("[Update Price by Queue Delay]: Own price %d, step %d\n", ownPrice, adjustment)
 

@@ -85,6 +85,8 @@ func (pt *PriceTable) queuingCheck() {
 			pt.UpdatePricebyQueueDelayExp(ctx)
 		} else if pt.priceStrategy == "log" {
 			pt.UpdatePricebyQueueDelayLog(ctx)
+		} else if pt.priceStrategy == "linear" {
+			pt.UpdatePricebyQueueDelayLinear(ctx)
 		}
 		// copy the content of current histogram to the previous histogram
 		prevHist = currHist
