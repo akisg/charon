@@ -103,9 +103,15 @@ func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName
 		return tokens, totalPrice, nil
 	}
 
-	ownPrice_string, _ := pt.priceTableMap.Load("ownprice")
+	ownPrice_string, ok := pt.priceTableMap.Load("ownprice")
+	if !ok {
+		return 0, "", status.Error(codes.Internal, "ownprice not found")
+	}
 	ownPrice := ownPrice_string.(int64)
-	downstreamPrice, _ := pt.RetrieveDSPrice(ctx, methodName)
+	downstreamPrice, err := pt.RetrieveDSPrice(ctx, methodName)
+	if err != nil {
+		return 0, "", status.Error(codes.Internal, "downstream price not found")
+	}
 
 	if pt.priceAggregation == "maximal" {
 

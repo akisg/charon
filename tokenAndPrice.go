@@ -44,12 +44,12 @@ func (pt *PriceTable) RetrieveDSPrice(ctx context.Context, methodName string) (i
 	// load the downstream price from the price table with method name as key.
 	downstreamPrice_string, ok := pt.priceTableMap.Load(methodName)
 	if !ok || downstreamPrice_string == nil {
-		return 0, errors.New("price not found")
+		return 0, errors.New("Downstream price is not loaded")
 	}
 
 	downstreamPrice, ok := downstreamPrice_string.(int64)
 	if !ok {
-		return 0, errors.New("invalid price type")
+		return 0, errors.New("Invalid price type")
 	}
 	logger("[Retrieve DS Price]:	Downstream price of %s is %d\n", methodName, downstreamPrice)
 	return downstreamPrice, nil
@@ -255,7 +255,7 @@ func (pt *PriceTable) UpdatePricebyQueueDelayLog(ctx context.Context) error {
 	}
 
 	pt.priceTableMap.Store("ownprice", ownPrice)
-	logger("[Update Price by Queue Delay]: Own price updated to %d\n", ownPrice)
+	logger("[Update Price by Queue Delay]: Own price %d\n", ownPrice)
 
 	return nil
 }
@@ -270,12 +270,16 @@ func (pt *PriceTable) UpdateDownstreamPrice(ctx context.Context, method string, 
 		downstreamPrice_old, loaded := pt.priceTableMap.Load(method)
 		if !loaded {
 			// raise an error if the downstream price is not loaded.
-			return 0, status.Errorf(codes.Aborted, fmt.Sprintf("Downstream price of %s is not loaded", method+"-"+nodeName))
+			logger("[Error]:	Cannot find the previous downstream price of %s\n", method)
+			// return 0, status.Errorf(codes.Aborted, fmt.Sprintf("Downstream price of %s is not loaded", method+"-"+nodeName))
+			downstreamPrice_old = 0
+		} else {
+			logger("[Previous DS Price]:	The price of %s is %d\n", method, downstreamPrice_old)
 		}
 		if downstreamPrice > downstreamPrice_old.(int64) {
 			// update the downstream price
 			pt.priceTableMap.Store(method, downstreamPrice)
-			logger("[Received Resp]:	Downstream price of %s updated to %d\n", method, downstreamPrice)
+			logger("[Updating DS Price]:	Downstream price of %s updated to %d\n", method, downstreamPrice)
 			return downstreamPrice, nil
 		}
 		// if the downstream price is not greater than the current downstream price, store it and calculate the max
