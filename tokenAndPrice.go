@@ -41,15 +41,19 @@ func (pt *PriceTable) SplitTokens(ctx context.Context, tokenleft int64, methodNa
 }
 
 func (pt *PriceTable) RetrieveDSPrice(ctx context.Context, methodName string) (int64, error) {
+	if len(pt.callMap[methodName]) == 0 {
+		logger("[Retrieve DS Price]:	No downstream service for %s\n", methodName)
+		return 0, nil
+	}
 	// load the downstream price from the price table with method name as key.
 	downstreamPrice_string, ok := pt.priceTableMap.Load(methodName)
 	if !ok || downstreamPrice_string == nil {
-		return 0, errors.New("Downstream price is not loaded")
+		return 0, errors.New("[retrieve ds price] downstream price not found")
 	}
 
 	downstreamPrice, ok := downstreamPrice_string.(int64)
 	if !ok {
-		return 0, errors.New("Invalid price type")
+		return 0, errors.New("[retrieve ds price] downstream price wrong type")
 	}
 	logger("[Retrieve DS Price]:	Downstream price of %s is %d\n", methodName, downstreamPrice)
 	return downstreamPrice, nil
@@ -274,7 +278,7 @@ func (pt *PriceTable) UpdateDownstreamPrice(ctx context.Context, method string, 
 			// return 0, status.Errorf(codes.Aborted, fmt.Sprintf("Downstream price of %s is not loaded", method+"-"+nodeName))
 			downstreamPrice_old = 0
 		} else {
-			logger("[Previous DS Price]:	The price of %s is %d\n", method, downstreamPrice_old)
+			logger("[Previous DS Price]:	The DS price of %s was %d before the update.\n", method, downstreamPrice_old)
 		}
 		if downstreamPrice > downstreamPrice_old.(int64) {
 			// update the downstream price

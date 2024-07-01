@@ -105,12 +105,13 @@ func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName
 
 	ownPrice_string, ok := pt.priceTableMap.Load("ownprice")
 	if !ok {
-		return 0, "", status.Error(codes.Internal, "ownprice not found")
+		return 0, "", status.Errorf(codes.Internal, "[loadshedding]: own price not found for %s", methodName)
 	}
 	ownPrice := ownPrice_string.(int64)
 	downstreamPrice, err := pt.RetrieveDSPrice(ctx, methodName)
 	if err != nil {
-		return 0, "", status.Error(codes.Internal, "downstream price not found")
+		logger("[LoadShedding]: Downstream price not found for %s with error %v\n", methodName, err)
+		return 0, "", err
 	}
 
 	if pt.priceAggregation == "maximal" {
@@ -428,7 +429,7 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	if err != nil && err != InsufficientTokens {
 		// The limiter failed. This error should be logged and examined.
 		log.Println(err)
-		return nil, status.Error(codes.Internal, "internal error")
+		return nil, err
 	}
 	if pt.priceAggregation == "additive" {
 		// [critical] Jiali: Being outgoing seems to be critical for us.
