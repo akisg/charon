@@ -51,6 +51,7 @@ func (pt *PriceTable) RetrieveDSPrice(ctx context.Context, methodName string) (i
 	if !ok {
 		return 0, errors.New("invalid price type")
 	}
+	logger("[Retrieve DS Price]:	Downstream price of %s is %d\n", methodName, downstreamPrice)
 	return downstreamPrice, nil
 }
 
@@ -290,6 +291,7 @@ func (pt *PriceTable) UpdateDownstreamPrice(ctx context.Context, method string, 
 			}
 			return true
 		})
+		logger("[Updated DS Price]:	The price of %s is now %d\n", method, maxPrice)
 		// update the downstream price only for the method involved in the request.
 		pt.priceTableMap.Store(method, maxPrice)
 

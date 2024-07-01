@@ -108,13 +108,18 @@ func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName
 	downstreamPrice, _ := pt.RetrieveDSPrice(ctx, methodName)
 
 	if pt.priceAggregation == "maximal" {
+
+		logger("[Received Req]: Method %s, ownPrice is %d, downstreamPrice is %d.\n", methodName, ownPrice, downstreamPrice)
+
 		// take the max of ownPrice and downstreamPrice
 		if ownPrice < downstreamPrice {
 			ownPrice = downstreamPrice
 		}
 		if tokens >= ownPrice {
+			logger("[Performing AQM]: Request accepted. Token is %d, but price is %d\n", tokens, ownPrice)
 			return tokens - ownPrice, strconv.FormatInt(ownPrice, 10), nil
 		} else {
+			logger("[Performing AQM]: Request rejected for lack of tokens. Token is %d, but price is %d\n", tokens, ownPrice)
 			return 0, strconv.FormatInt(ownPrice, 10), InsufficientTokens
 		}
 	} else if pt.priceAggregation == "additive" {
