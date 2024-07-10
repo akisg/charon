@@ -224,7 +224,7 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 
 	if priceAggregation, ok := options["priceAggregation"].(string); ok {
 		// if the priceAggregation is not "maximal" or "additive", then set it to be "maximal"
-		if priceAggregation != "maximal" && priceAggregation != "additive" {
+		if priceAggregation != "maximal" && priceAggregation != "additive" && priceAggregation != "mean" {
 			priceAggregation = "maximal"
 		}
 		priceTable.priceAggregation = priceAggregation

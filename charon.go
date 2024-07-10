@@ -129,6 +129,17 @@ func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName
 			logger("[Performing AQM]: Request rejected for lack of tokens. Token is %d, but price is %d\n", tokens, ownPrice)
 			return 0, strconv.FormatInt(ownPrice, 10), InsufficientTokens
 		}
+	} else if pt.priceAggregation == "mean" {
+		// use the mean of ownPrice and downstreamPrice as the final price
+		totalPrice := (ownPrice + downstreamPrice) / 2
+		logger("[Received Req]:	Total price is %d, ownPrice is %d downstream price is %d\n", totalPrice, ownPrice, downstreamPrice)
+		if tokens >= totalPrice {
+			logger("[Received Req]: Request accepted. Token is %d, but price is %d\n", tokens, totalPrice)
+			return tokens - totalPrice, strconv.FormatInt(totalPrice, 10), nil
+		} else {
+			logger("[Received Req]: Request rejected for lack of tokens. Token is %d, but price is %d\n", tokens, totalPrice)
+			return 0, strconv.FormatInt(totalPrice, 10), InsufficientTokens
+		}
 	} else if pt.priceAggregation == "additive" {
 		totalPrice := ownPrice + downstreamPrice
 		// totalPrice, _ := pt.RetrieveTotalPrice(ctx, methodName)
@@ -401,7 +412,7 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 			}
 			tok, _ = strconv.ParseInt(md["tokens"][0], 10, 64)
 		}
-	} else if pt.priceAggregation == "maximal" {
+	} else if pt.priceAggregation == "maximal" || pt.priceAggregation == "mean" {
 		// if the price are maximal, then the tokens are stored in the "tokens" field of the metadata
 		if val, ok := md["tokens"]; ok {
 			// logger("[Received Req]:	tokens for %s are %s\n", pt.nodeName, val)

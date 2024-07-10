@@ -92,6 +92,8 @@ func (pt *PriceTable) RetrieveTotalPrice(ctx context.Context, methodName string)
 		}
 	} else if pt.priceAggregation == "additive" {
 		totalPrice = ownPrice + downstreamPrice
+	} else if pt.priceAggregation == "mean" {
+		totalPrice = (ownPrice + downstreamPrice) / 2
 	}
 	price_string := strconv.FormatInt(totalPrice, 10)
 	logger("[Retrieve Total Price]:	Downstream price of %s is now %d, total price %d \n", methodName, downstreamPrice, totalPrice)
@@ -266,7 +268,7 @@ func (pt *PriceTable) UpdatePricebyQueueDelayLog(ctx context.Context) error {
 
 // UpdateDownstreamPrice incorperates the downstream price table to its own price table.
 func (pt *PriceTable) UpdateDownstreamPrice(ctx context.Context, method string, nodeName string, downstreamPrice int64) (int64, error) {
-	if pt.priceAggregation == "maximal" {
+	if pt.priceAggregation == "maximal" || pt.priceAggregation == "mean" {
 		// Update the downstream price, but concatenate the method name with node name to distinguish different downstream services calls.
 		pt.priceTableMap.Store(method+"-"+nodeName, downstreamPrice)
 		logger("[Received Resp]:	Downstream price of %s updated to %d\n", method+"-"+nodeName, downstreamPrice)
