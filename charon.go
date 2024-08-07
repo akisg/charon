@@ -431,9 +431,14 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	tokenleft, price_string, err := pt.LoadShedding(ctx, tok, methodName)
 	if err == InsufficientTokens && pt.loadShedding {
 		// price_string, _ := pt.RetrieveTotalPrice(ctx, methodName)
-		header := metadata.Pairs("price", price_string, "name", pt.nodeName)
-		logger("[Sending Error Resp]:	Total price is %s\n", price_string)
-		grpc.SendHeader(ctx, header)
+
+		// [Jiali]: Trying to send the header to the client stochastically, to avoid abrupt over rate limiting that may cause goodput to drop.
+		// if tok has last digits 0-5, then send the header to the client.
+		if tok%10 < 6 {
+			logger("[Sending Error Resp]:	Total price is %s\n", price_string)
+			header := metadata.Pairs("price", price_string, "name", pt.nodeName)
+			grpc.SendHeader(ctx, header)
+		}
 
 		return nil, status.Errorf(codes.ResourceExhausted, "%s req dropped by %s. Try again later.", methodName, pt.nodeName)
 	}
@@ -458,11 +463,13 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 	// Attach the price info to response before sending
 	// right now let's just propagate the corresponding price of the RPC method rather than a whole pricetable.
 	// if not pt.lazyResponse or if pt.lazyResponse is true but the tokenleft is smaller than
-	if !pt.lazyResponse || tokenleft*10 < tok {
+	if !pt.lazyResponse {
 		// price_string, _ := pt.RetrieveTotalPrice(ctx, methodName)
-		header := metadata.Pairs("price", price_string, "name", pt.nodeName)
-		logger("[Preparing Resp]:	Total price of %s is %s\n", methodName, price_string)
-		grpc.SendHeader(ctx, header)
+		if tok%10 < 6 {
+			header := metadata.Pairs("price", price_string, "name", pt.nodeName)
+			logger("[Preparing Resp]:	Total price of %s is %s\n", methodName, price_string)
+			grpc.SendHeader(ctx, header)
+		}
 	} else {
 		logger("[Preparing Resp]:	Lazy response is enabled, no price attached to response.\n")
 	}
