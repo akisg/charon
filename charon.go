@@ -433,8 +433,8 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 		// price_string, _ := pt.RetrieveTotalPrice(ctx, methodName)
 
 		// [Jiali]: Trying to send the header to the client stochastically, to avoid abrupt over rate limiting that may cause goodput to drop.
-		// if tok has last digits 0-5, then send the header to the client.
-		if tok%10 < 6 {
+		// if tok has last digits 0-1, then send the header to the client.
+		if tok%5 == 0 {
 			logger("[Sending Error Resp]:	Total price is %s\n", price_string)
 			header := metadata.Pairs("price", price_string, "name", pt.nodeName)
 			grpc.SendHeader(ctx, header)
