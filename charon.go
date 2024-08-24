@@ -433,7 +433,7 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 		// price_string, _ := pt.RetrieveTotalPrice(ctx, methodName)
 
 		// [Jiali]: Trying to send the header to the client stochastically, to avoid abrupt over rate limiting that may cause goodput to drop.
-		// if tok has last digits 0-1, then send the header to the client.
+		// with a probability of 1/5, send the price on error response to the client.
 		if tok%5 == 0 {
 			logger("[Sending Error Resp]:	Total price is %s\n", price_string)
 			header := metadata.Pairs("price", price_string, "name", pt.nodeName)
@@ -462,10 +462,9 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 
 	// Attach the price info to response before sending
 	// right now let's just propagate the corresponding price of the RPC method rather than a whole pricetable.
-	// if not pt.lazyResponse or if pt.lazyResponse is true but the tokenleft is smaller than
+	// if not pt.lazyResponse, then attach the price to the response with a probability of 1/5
 	if !pt.lazyResponse {
-		// price_string, _ := pt.RetrieveTotalPrice(ctx, methodName)
-		if tok%10 < 6 {
+		if tok%5 == 0 {
 			header := metadata.Pairs("price", price_string, "name", pt.nodeName)
 			logger("[Preparing Resp]:	Total price of %s is %s\n", methodName, price_string)
 			grpc.SendHeader(ctx, header)
