@@ -278,7 +278,7 @@ func (pt *PriceTable) UpdateDownstreamPrice(ctx context.Context, method string, 
 			// raise an error if the downstream price is not loaded.
 			logger("[Error]:	Cannot find the previous downstream price of %s\n", method)
 			// return 0, status.Errorf(codes.Aborted, fmt.Sprintf("Downstream price of %s is not loaded", method+"-"+nodeName))
-			downstreamPrice_old = 0
+			downstreamPrice_old = int64(0)
 		} else {
 			logger("[Previous DS Price]:	The DS price of %s was %d before the update.\n", method, downstreamPrice_old)
 		}
