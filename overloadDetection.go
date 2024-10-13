@@ -40,39 +40,16 @@ func (pt *PriceTable) queuingCheck() {
 		start := time.Now()
 		// get the current histogram
 		currHist := readHistogram()
-		/*
-			// calculate the differernce between the two histograms prevHist and currHist
-			diff := metrics.Float64Histogram{}
-			// if preHist is empty pointer, return currHist
-			if prevHist == nil {
-				diff = *currHist
-			} else {
-				diff = GetHistogramDifference(*prevHist, *currHist)
-			}
-			// maxLatency is the max of the histogram in milliseconds.
-			gapLatency := maximumBucket(&diff)
-		*/
+
 		if prevHist == nil {
 			// directly go to next iteration
 			prevHist = currHist
 			continue
 		}
 		gapLatency := maximumQueuingDelayms(prevHist, currHist)
-		// medianLatency := medianBucket(&diff)
-		// gapLatency := percentileBucket(&diff, 90)
 
 		ctx := context.Background()
 
-		// ToDo: move the print of the histogram to a file
-		/*
-			cumulativeLat := medianBucket(currHist)
-			// printHistogram(currHist)
-			logger("[Cumulative Waiting Time Median]:	%f ms.\n", cumulativeLat)
-			// printHistogram(&diff)
-			logger("[Incremental Waiting Time 90-tile]:	%f ms.\n", percentileBucket(&diff, 90))
-			logger("[Incremental Waiting Time Median]:	%f ms.\n", medianBucket(&diff))
-			logger("[Incremental Waiting Time Maximum]:	%f ms.\n", maximumBucket(&diff))
-		*/
 		logger("[Incremental Waiting Time Maximum]:	%f ms.\n", gapLatency)
 		// store the gapLatency in the context ctx
 		ctx = context.WithValue(ctx, "gapLatency", gapLatency)
@@ -127,8 +104,6 @@ func (pt *PriceTable) checkBoth() {
 		}
 		// maxLatency is the max of the histogram in milliseconds.
 		gapLatency := maximumBucket(&diff)
-		// medianLatency := medianBucket(&diff)
-		// gapLatency := percentileBucket(&diff, 90)
 
 		cumulativeLat := medianBucket(currHist)
 		// printHistogram(currHist)

@@ -59,25 +59,6 @@ func (pt *PriceTable) RetrieveDSPrice(ctx context.Context, methodName string) (i
 	return downstreamPrice, nil
 }
 
-// // SaveDSPrice saves the downstream price table to the price table. It loops through the downstreamNames and save the downstream price to the price table.
-// func (pt *PriceTable) SaveDSPrice(ctx context.Context, methodName string) error {
-// 	// retrive downstream node name involved in the request from callmap.
-// 	downstreamNames := pt.callMap[methodName]
-// 	var downstreamPriceSum int64
-// 	for _, downstreamName := range downstreamNames {
-// 		// concatenate the method name with node name to distinguish different downstream services calls.
-// 		downstreamPrice, _ := pt.priceTableMap.Load(methodName + "-" + downstreamName)
-// 		logger("[Sum DS Prices]:	The price of %s at %s is %d.\n", methodName, downstreamName, downstreamPrice)
-// 		// downstreamPrice := downstreamPriceString.(int64)
-// 		downstreamPriceSum += downstreamPrice.(int64)
-// 	}
-// 	// save the downstream price to the price table with method name as key.
-// 	pt.priceTableMap.Store(methodName, downstreamPriceSum)
-// 	// log the downstream price of the request.
-// 	logger("[Updated DS Price]:	Downstream price of %s is now %d\n", methodName, downstreamPriceSum)
-// 	return nil
-// }
-
 func (pt *PriceTable) RetrieveTotalPrice(ctx context.Context, methodName string) (string, error) {
 	ownPrice_string, _ := pt.priceTableMap.Load("ownprice")
 	ownPrice := ownPrice_string.(int64)

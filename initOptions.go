@@ -33,7 +33,7 @@ func NewPriceTable(initprice int64, nodeName string, callmap map[string][]string
 		// debug:              false,
 		// debugFreq:          4000,
 	}
-	// priceTable.rateLimiter <- 1
+
 	// Only refill the tokens when the interceptor is for enduser.
 	if priceTable.nodeName == "client" {
 		go priceTable.tokenRefill(priceTable.tokenRefillDist, priceTable.tokenUpdateStep, priceTable.tokenUpdateRate)
@@ -92,12 +92,6 @@ func NewCharon(nodeName string, callmap map[string][]string, options map[string]
 	if trackingPrice, ok := options["recordPrice"].(bool); ok {
 		trackPrice = trackingPrice
 	}
-
-	// if debugFreq, ok := options["debugFreq"].(int64); ok {
-	// 	priceTable.debugFreq = debugFreq
-	// 	// print the debug and debugFreq of the node if the name is not client
-	// 	logger("debug and debugFreq of %s set to %v and %v\n", nodeName, priceTable.debug, )
-	// }
 
 	if initprice, ok := options["initprice"].(int64); ok {
 		priceTable.initprice = initprice
@@ -341,8 +335,6 @@ func (pt *PriceTable) tokenRefill(tokenRefillDist string, tokenUpdateStep int64,
 				// pt.lastUpdateTime = time.Now()
 				pt.unblockRateLimiter()
 			}
-			// ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
-			// logger("[TokenRefill]: Tokens refilled. Tokens left: %d\n", pt.tokensLeft)
 		}
 	}
 }
@@ -357,10 +349,7 @@ func (pt *PriceTable) initialTokenUpdateInterval() time.Duration {
 func (pt *PriceTable) nextTokenUpdateInterval(lambda float64) time.Duration {
 	// Calculate the next tick duration based on the exponential distribution
 	// For example, you can use a lambda value of 0.5 for the exponential distribution
-	// lambda := 0.5
 	nextTickDuration := time.Duration(rand.ExpFloat64()/lambda) * time.Millisecond
-	// ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("request-id", "0"))
-	// logger("[TokenRefill]: Next tick duration: %v\n", nextTickDuration)
 
 	if nextTickDuration <= 0 {
 		// Handle the case when nextTickDuration is non-positive

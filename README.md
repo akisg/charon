@@ -22,7 +22,7 @@ Token and price are piggybacked on req and resp, respectively, to allow for dist
 ### Implementation
 Rajomon is implemented as a library that can be used by any microservice. It is implemented in Go and uses gRPC for communication between microservices. 
 
-## charon.go
+## rajomon.go
 the main implementation of Rajomon via interceptors, there's 3 interceptors: UnaryInterceptorClient, UnaryInterceptorEnduser, and UnaryInterceptor. Among which the first two are for client side and the last one is for server side. 
 - In UnaryInterceptorClient, it intercepts the outgoing request and incoming response, it reads the price from resp and store it. 
 - In UnaryInterceptorEnduser, it intercepts the outgoing request and incoming response, it checks the price for ratelimiting, if not enough token, it either waits for more tokens or just aborts immediately, and it also updates the server price after hear back.

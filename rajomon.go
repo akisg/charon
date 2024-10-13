@@ -153,10 +153,6 @@ func (pt *PriceTable) LoadShedding(ctx context.Context, tokens int64, methodName
 			return 0, strconv.FormatInt(totalPrice, 10), InsufficientTokens
 		}
 
-		// I'm thinking about moving it to a separate go routine, and have it run periodically for better performance.
-		// or maybe run it whenever there's a congestion detected, by latency for example.
-		// t.UpdateOwnPrice(ctx, extratoken < 0, tokens, ownPrice)
-
 		if pt.pinpointThroughput {
 			pt.Increment()
 		}
@@ -199,8 +195,6 @@ func (pt *PriceTable) UnaryInterceptorClient(ctx context.Context, method string,
 
 // unaryInterceptor is an example unary interceptor.
 func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-	// timer the intereceptor overhead
-	// interceptorStartTime := time.Now()
 
 	md, ok := metadata.FromOutgoingContext(ctx)
 	if !ok {
@@ -274,10 +268,9 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 			}
 			return status.Errorf(codes.DeadlineExceeded, "Client timeout waiting for tokens.")
 		}
-		// right now let's assume that client uses all the tokens on her next request.
-		// if pt.tokenStrategy == "all" {
+
 		tok = pt.GetTokensLeft()
-		// } else
+
 		if pt.tokenStrategy == "uniform" {
 			// set the tok to be a uniform random number between 0 and tokensLeft
 			if tok > 0 {
@@ -345,10 +338,6 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 	var header metadata.MD // variable to store header and trailer
 	err := invoker(ctx, method, req, reply, cc, grpc.Header(&header))
 
-	// run the following code asynchorously, without blocking the main thread.
-	// go func() {
-	// check the timer and log the overhead of intercepting
-	// logger("[Enduser Interceptor Overhead]:	 %.2f milliseconds\n", float64(time.Since(interceptorStartTime).Microseconds())/1000)
 	// Jiali: after replied. update and store the price info for future
 	if len(header["price"]) > 0 {
 		priceDownstream, _ := strconv.ParseInt(header["price"][0], 10, 64)
@@ -361,11 +350,6 @@ func (pt *PriceTable) UnaryInterceptorEnduser(ctx context.Context, method string
 	return err
 }
 
-// func getMethodInfo(ctx context.Context) {
-// 	methodName, _ := grpc.Method(ctx)
-// 	logger(methodName)
-// }
-
 func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	// This is the server side interceptor, it should check tokens, update price, do overload handling and attach price to response
 
@@ -374,10 +358,6 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 		return nil, errMissingMetadata
 	}
 
-	// print all the k-v pairs in the metadata md
-	// for k, v := range md {
-	// 	logger("[Received Req]:	The metadata for request is %s: %s\n", k, v)
-	// }
 	if debug {
 		var metadataLog string
 		for k, v := range md {
@@ -448,12 +428,9 @@ func (pt *PriceTable) UnaryInterceptor(ctx context.Context, req interface{}, inf
 		return nil, err
 	}
 	if pt.priceAggregation == "additive" {
-		// [critical] Jiali: Being outgoing seems to be critical for us.
 		// Jiali: we need to attach the token info to the context, so that the downstream can retrieve it.
-		// ctx = metadata.AppendToOutgoingContext(ctx, "tokens", tok_string)
 		// Jiali: we actually need multiple kv pairs for the token information, because one context is sent to multiple downstreams.
 		downstreamTokens, _ := pt.SplitTokens(ctx, tokenleft, methodName)
-
 		ctx = metadata.AppendToOutgoingContext(ctx, downstreamTokens...)
 
 	}
